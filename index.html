@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pocket Monitor">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="theme-color" content="#000000">
+<title>Pocket Monitor BLE</title>
+<style>
+  :root{
+    --bg:#000; --bar:rgba(16,16,16,.92); --txt:#e8e8e8; --dim:#8a8a8a;
+    --acc:#ffb000; --rec:#e0201b; --ok:#3fbf5f; --warn:#e8a33a; --line:#2c2c2c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font:500 15px/1.2 -apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif;overflow:hidden;user-select:none}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
+  #app{position:fixed;inset:0;padding:var(--st) var(--sr) var(--sb) var(--sl);display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:auto 1fr auto}
+
+  /* ---------- barres ---------- */
+  .bar{grid-column:2/3;display:flex;align-items:stretch;background:var(--bar);min-height:52px;overflow-x:auto;scrollbar-width:none}
+  #top{border-bottom:1px solid var(--line)}
+  #bottom{border-top:1px solid var(--line)}
+  .cell{display:flex;flex-direction:column;justify-content:center;padding:6px 14px;border-right:1px solid var(--line);min-width:0;flex:0 0 auto}
+  .cell.tap:hover{background:#222}
+  .cell .lab{font-size:10px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
+  .cell .val{font-size:19px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cell.grow{flex:1 0 auto;align-items:center}
+  .cell.right{margin-left:auto;border-right:0;border-left:1px solid var(--line)}
+  #tc{font-size:22px;font-variant-numeric:tabular-nums;letter-spacing:.02em;white-space:nowrap}
+  #tc.rec{color:var(--rec)}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#555;margin-right:8px;vertical-align:middle}
+  .dot.rec{background:var(--rec);animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .badge{font-size:10px;padding:2px 5px;border-radius:4px;background:#333;color:#ddd;margin-left:6px;vertical-align:middle;letter-spacing:.05em}
+  .badge.on{background:var(--acc);color:#000}
+
+  /* ---------- zone image ---------- */
+  #view{grid-column:2/3;position:relative;overflow:auto;background:#050505;display:flex;align-items:center;justify-content:center;padding:16px}
+  #view.rec{box-shadow:inset 0 0 0 3px var(--rec)}
+  #dash{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;width:100%;max-width:1100px}
+  .tile{background:#121212;border:1px solid #262626;border-radius:12px;padding:14px 16px;text-align:left;display:flex;flex-direction:column;gap:6px;min-height:92px}
+  .tile:hover{background:#1a1a1a;border-color:#3a3a3a}
+  .tile .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .tile .val{font-size:30px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tile .sub{font-size:12px;color:var(--dim)}
+  .tile.on{border-color:var(--acc)} .tile.on .val{color:var(--acc)}
+  .tile.wide{grid-column:span 2}
+  #frame{position:relative;aspect-ratio:16/9;max-width:100%;max-height:100%;width:100%;background:#0b0b0b}
+  #frame.rec{outline:3px solid var(--rec);outline-offset:-3px}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  #placeholder{position:absolute;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;color:var(--dim);text-align:center;padding:20px}
+  #placeholder b{color:var(--txt);font-size:17px}
+  .overlay{position:absolute;inset:0;pointer-events:none}
+  .grid3{background:
+     linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px) calc(33.33% + .5px),transparent calc(33.33% + .5px) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px) calc(66.66% + .5px),transparent calc(66.66% + .5px)),
+     linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.35) calc(33.33% - .5px) calc(33.33% + .5px),transparent calc(33.33% + .5px) calc(66.66% - .5px),rgba(255,255,255,.35) calc(66.66% - .5px) calc(66.66% + .5px),transparent calc(66.66% + .5px))}
+  .cross::before,.cross::after{content:"";position:absolute;left:50%;top:50%;background:rgba(255,255,255,.7);transform:translate(-50%,-50%)}
+  .cross::before{width:28px;height:1px}.cross::after{width:1px;height:28px}
+  #guide{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center}
+  #guide div{border:1px solid rgba(255,255,255,.75);box-shadow:0 0 0 100vmax rgba(0,0,0,.45)}
+  #zebraCv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;image-rendering:pixelated;object-fit:contain}
+
+  /* ---------- colonnes latérales ---------- */
+  #camstrip{grid-column:2/3;display:none;gap:6px;padding:6px 8px;background:#0a0a0a;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;align-items:stretch}
+  .chip{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:9px;background:#161616;border:1px solid #2a2a2a;text-align:left}
+  .chip.act{border-color:var(--acc);background:#1f1a0d}
+  .chip.grp{box-shadow:inset 0 -2px 0 var(--acc)}
+  .chip.rec{border-color:var(--rec)}
+  .chip .ln{font-size:13px;width:20px;text-align:center;opacity:.9}
+  .chip .cl{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .chip .cl b{font-size:13px;white-space:nowrap}
+  .chip .cl small{font-size:11px;color:var(--dim);white-space:nowrap}
+  .chip .ctc{font-size:12px;font-variant-numeric:tabular-nums;color:var(--dim)}
+  .chip.rec .ctc{color:var(--rec)}
+  .chip .d{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle;background:#555}
+  .chip .d.ok{background:var(--ok)} .chip .d.wait{background:var(--warn)}
+  #camstrip .sp{flex:1 0 8px}
+  .chipbtn{flex:0 0 auto;padding:6px 12px;border-radius:8px;border:1px solid #333;background:#1a1a1a;font-size:13px;white-space:nowrap}
+  .chipbtn.on{border-color:var(--acc);color:var(--acc)}
+  .chipbtn.recall{color:#ff8a80;border-color:#5a2525} .chipbtn.recall.on{background:var(--rec);color:#fff}
+  .mtable{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  .mtable th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:left;padding:6px 8px;border-bottom:1px solid #2a2a2a;font-weight:500}
+  .mtable td{padding:8px;border-bottom:1px solid #1f1f1f;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .mtable tr{cursor:pointer} .mtable tr.act td{background:#1f1a0d}
+  .mtable td.diff{color:var(--acc);font-weight:600}
+  .mtable td.rec{color:var(--rec)}
+  #side,#fcol{grid-row:1/5;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px;background:#0c0c0c;overflow-y:auto;scrollbar-width:none}
+  #side{grid-column:3/4;border-left:1px solid var(--line);width:86px}
+  #fcol{grid-column:1/2;border-right:1px solid var(--line);width:76px}
+  .sbtn{width:68px;min-height:48px;border-radius:10px;background:#1d1d1d;border:1px solid #2e2e2e;font-size:12px;letter-spacing:.05em;display:flex;align-items:center;justify-content:center;text-align:center;flex:0 0 auto;padding:2px}
+  .sbtn:hover{background:#262626}
+  .sbtn.on{border-color:var(--acc);color:var(--acc)}
+  .fkey{width:60px;min-height:52px;flex-direction:column;gap:3px;font-size:11px}
+  .fkey small{font-size:9px;color:var(--dim);letter-spacing:.1em}
+  .fkey.on small{color:var(--acc)}
+  #recBtn{width:68px;height:68px;border-radius:50%;background:#222;border:3px solid #555;margin:auto 0;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  #recBtn i{width:34px;height:34px;border-radius:50%;background:var(--rec);transition:.15s}
+  #recBtn.rec{border-color:var(--rec)} #recBtn.rec i{border-radius:6px;width:26px;height:26px}
+  #conn{font-size:11px;text-align:center;color:var(--dim)}
+  #conn.ok{color:var(--ok)} #conn.retry{color:var(--warn)}
+
+  #histo{width:110px;height:36px;display:block;background:#0a0a0a;border:1px solid #333}
+
+  /* ---------- sélecteur (bas d'écran) ---------- */
+  #picker{position:fixed;left:calc(76px + var(--sl));right:calc(86px + var(--sr));bottom:var(--sb);background:rgba(14,14,14,.97);border-top:1px solid var(--line);transform:translateY(110%);transition:transform .18s ease;z-index:20;padding:12px 14px 16px;max-height:70vh;overflow:auto}
+  #picker.open{transform:none}
+  #picker h3{margin:0 0 10px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;align-items:center}
+  #picker h3 button{font-size:13px;color:var(--txt);padding:4px 10px;border:1px solid #333;border-radius:6px}
+  .opts{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+  .opts.wrap{flex-wrap:wrap;overflow:visible}
+  .opt{flex:0 0 auto;min-width:64px;padding:12px 12px;border-radius:8px;background:#222;border:1px solid #2f2f2f;font-size:16px;font-variant-numeric:tabular-nums;text-align:center}
+  .opts.wrap .opt{font-size:14px;padding:10px 12px}
+  .opt.sel{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
+  .opt:hover:not(.sel){background:#2b2b2b}
+  .row{display:flex;align-items:center;gap:12px;margin-top:12px}
+  .row label{width:90px;color:var(--dim);font-size:13px;flex:0 0 auto}
+  .row output{width:64px;text-align:right;font-variant-numeric:tabular-nums;flex:0 0 auto}
+  input[type=range]{flex:1;accent-color:var(--acc);min-width:80px}
+
+  /* ---------- menu plein écran ---------- */
+  #menu{position:fixed;inset:0;padding:var(--st) var(--sr) var(--sb) var(--sl);background:#111;z-index:30;display:none;grid-template-columns:200px 1fr}
+  #menu.open{display:grid}
+  #tabs{background:#0a0a0a;border-right:1px solid var(--line);display:flex;flex-direction:column;padding-top:10px;overflow:auto}
+  #tabs button{text-align:left;padding:14px 18px;font-size:15px;color:var(--dim);border-left:3px solid transparent}
+  #tabs button.sel{color:var(--txt);border-left-color:var(--acc);background:#161616}
+  #tabs .tgroup{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#5c5c5c;padding:14px 18px 4px}
+  .item.na > span:first-child{color:#666}
+  .item.na .na-tag{font-size:11px;color:#666;border:1px dashed #3a3a3a;border-radius:5px;padding:4px 8px;white-space:nowrap}
+  #tabs .close{margin-top:auto;color:var(--txt);border-top:1px solid var(--line)}
+  #pane{overflow:auto;padding:18px 26px 40px}
+  #pane h2{margin:0 0 6px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--acc)}
+  .item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #222}
+  .item > span:first-child{color:#cfcfcf;flex:0 0 auto;max-width:40%}
+  .item .row{margin:0;flex:1;max-width:520px}
+  .seg{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}
+  .seg button{padding:8px 12px;border-radius:6px;background:#202020;border:1px solid #2e2e2e;font-size:14px}
+  .seg button.sel{background:var(--acc);color:#000;border-color:var(--acc);font-weight:600}
+  .note{color:var(--dim);font-size:12px;margin:14px 0 0;line-height:1.5}
+  .txt,select{background:#1c1c1c;border:1px solid #333;color:var(--txt);padding:8px 10px;border-radius:6px;font:inherit;font-size:14px}
+  .txt{width:220px}
+  #log{font:12px/1.45 ui-monospace,Menlo,monospace;background:#0a0a0a;border:1px solid #262626;border-radius:6px;padding:10px;height:240px;overflow:auto;white-space:pre-wrap;color:#bbb;user-select:text}
+  .preset{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #222}
+  .preset .name{flex:1}
+  .preset .meta{color:var(--dim);font-size:12px}
+  .chk{display:flex;flex-wrap:wrap;gap:10px 16px;margin:8px 0}
+  .chk label{display:flex;gap:6px;align-items:center;font-size:14px;color:#ccc}
+
+  #toast{position:fixed;left:50%;top:calc(64px + var(--st));transform:translateX(-50%);background:#222;border:1px solid #444;padding:10px 16px;border-radius:8px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;text-align:center}
+  #toast.show{opacity:1}
+  #pair{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:60;display:none;align-items:center;justify-content:center;padding:calc(20px + var(--st)) 20px calc(20px + var(--sb))}
+  #pair.open{display:flex}
+  #pair .box{background:#161616;border:1px solid #333;border-radius:12px;max-width:520px;padding:22px 24px;line-height:1.5}
+  #pair h2{margin:0 0 8px;font-size:18px;color:var(--acc)}
+  #pair ol{padding-left:20px;color:#ccc;font-size:14px}
+  #pair li{margin:6px 0}
+  .big{padding:10px 16px;border-radius:8px;border:1px solid #444;background:#1e1e1e;font-size:14px}
+  .big.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
+  .big.danger{border-color:#7a2a2a;color:#ff8a80}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Touches de fonction -->
+  <div id="fcol"></div>
+
+  <!-- Bandeau supérieur -->
+  <div id="camstrip"></div>
+  <div id="top" class="bar">
+    <button class="cell tap" data-pick="fps"><span class="lab">FPS</span><span class="val" id="vFps">--</span></button>
+    <button class="cell tap" data-pick="shutter"><span class="lab" id="lShutter">Shutter</span><span class="val" id="vShutter">--</span></button>
+    <button class="cell tap" data-pick="iris"><span class="lab">Iris</span><span class="val" id="vIris">--</span></button>
+    <div class="cell grow"><span id="tc"><span class="dot" id="recDot"></span><span id="tcTxt">00:00:00:00</span></span></div>
+    <button class="cell tap" data-pick="lut"><span class="lab">LUT</span><span class="val" id="vLut" style="font-size:15px">--</span></button>
+    <button class="cell tap right" data-pick="codec"><span class="lab" id="lRes">--</span><span class="val" id="vCodec">--</span></button>
+  </div>
+
+  <!-- Image -->
+  <div id="view">
+    <div id="dash"></div>
+  </div>
+
+  <!-- Bandeau inférieur -->
+  <div id="bottom" class="bar">
+    <button class="cell tap" data-pick="iso"><span class="lab">ISO</span><span class="val" id="vIso">--</span></button>
+    <button class="cell tap" data-pick="wb"><span class="lab">WB</span><span class="val" id="vWb">--</span></button>
+    <button class="cell tap" data-pick="wb"><span class="lab">Tint</span><span class="val" id="vTint">--</span></button>
+    <button class="cell tap" data-pick="focus"><span class="lab">Focus</span><span class="val" id="vFocus">--</span></button>
+    <button class="cell tap" data-pick="dr"><span class="lab">Dyn. range</span><span class="val" id="vDr">--</span></button>
+    <div class="cell"><span class="lab">Outils</span><span class="val" id="vTools" style="font-size:13px">—</span></div>
+    <div class="cell right"><span class="lab">Caméra</span><span class="val" id="vName" style="font-size:14px">—</span></div>
+  </div>
+
+  <!-- Colonne de droite -->
+  <div id="side">
+    <button class="sbtn" id="btnConnect">BLE</button>
+    <div id="conn">Déconnecté</div>
+    <button class="sbtn" id="btnAF">AF</button>
+    <button class="sbtn" id="btnIris">IRIS<br>AUTO</button>
+    <button class="sbtn" id="btnAWB">WB<br>AUTO</button>
+    <button id="recBtn" title="Enregistrer (Espace)"><i></i></button>
+    <button class="sbtn" id="btnPresets">PRESETS</button>
+    <button class="sbtn" id="btnMenu">MENU</button>
+  </div>
+</div>
+
+<div id="picker"><h3><span id="pkTitle"></span><button id="pkClose">OK</button></h3><div id="pkBody"></div></div>
+
+<div id="menu">
+  <div id="tabs">
+    <div class="tgroup">Plateau</div>
+    <button data-tab="multicam">Multicam</button>
+    <div class="tgroup">Menu caméra</div>
+    <button data-tab="record" class="sel">Enregistrement</button>
+    <button data-tab="monitor">Moniteur</button>
+    <button data-tab="audio">Audio</button>
+    <button data-tab="setup">Setup</button>
+    <button data-tab="presets">Presets</button>
+    <button data-tab="luts">LUTs</button>
+    <button data-tab="slate">Slate</button>
+    <div class="tgroup">Contrôles</div>
+    <button data-tab="image">Exposition & balance</button>
+    <button data-tab="color">Couleur</button>
+    <div class="tgroup">Moniteur</div>
+    <button data-tab="fkeys">Touches de fonction</button>
+    <button data-tab="conn">Connexion & diagnostic</button>
+    <button class="close" id="menuClose">✕ Fermer</button>
+  </div>
+  <div id="pane"></div>
+</div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div id="toast"></div>
+<div id="pair">
+  <div class="box">
+    <h2>Appairage Bluetooth</h2>
+    <p id="pairMsg"></p>
+    <ol>
+      <li>La caméra affiche un <b>code à 6 chiffres</b>.</li>
+      <li>Saisissez-le dans la fenêtre du système&nbsp;: sur Mac « Demande de jumelage Bluetooth » (souvent une <b>notification en haut à droite</b> — cliquez dessus) ; sur Windows/Android, la fenêtre de Chrome ou du système.</li>
+      <li>Puis cliquez sur <b>Continuer</b>. Ne relancez pas la connexion entre-temps : chaque nouvelle tentative change le code.</li>
+    </ol>
+    <p class="note" id="pairErr"></p>
+    <div class="row" style="justify-content:flex-end">
+      <button class="big" id="pairCancel">Annuler</button>
+      <button class="big primary" id="pairGo">Continuer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
+   ===================================================================== */
+const UUID = {
+  service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
+  outgoing: '5dd3465f-1aee-4299-8493-d2eca2f8e1bb',
+  incoming: 'b864e140-76a0-416a-bf30-5876504537d9',
+  timecode: '6d8f2110-86f1-41bf-9afb-451d87e976c8',
+  status:   '7fe8691d-95dc-4fc5-8abd-ca74339b51b9',
+  devName:  'ffac0c52-c9fb-41a0-b063-cc76282eb89c',
+  protocol: '8f1fd018-b508-456f-8f82-3d392bee2706',
+};
+const T = {VOID:0, I8:1, I16:2, I32:3, I64:4, STR:5, FX16:128};
+
+function packet(cat, param, type, data = new Uint8Array(0), op = 0) {
+  const len = 4 + data.length;
+  const buf = new Uint8Array(Math.ceil((4 + len) / 4) * 4);
+  buf.set([255, len, 0, 0, cat, param, type, op]);
+  buf.set(data, 8);
+  return buf;
+}
+const enc = {
+  i8:  a => Uint8Array.from(a, v => v & 0xff),
+  i16: a => { const d = new DataView(new ArrayBuffer(a.length*2)); a.forEach((v,i)=>d.setInt16(i*2, v, true)); return new Uint8Array(d.buffer); },
+  i32: a => { const d = new DataView(new ArrayBuffer(a.length*4)); a.forEach((v,i)=>d.setInt32(i*4, v, true)); return new Uint8Array(d.buffer); },
+  fx:  a => enc.i16(a.map(v => Math.max(-32768, Math.min(32767, Math.round(v * 2048))))),
+};
+function decodeValues(type, dv, off, n) {
+  const out = [];
+  switch (type) {
+    case T.VOID: for (let i=0;i<n;i++) out.push(dv.getUint8(off+i)); break; // booléens
+    case T.I8:   for (let i=0;i<n;i++) out.push(dv.getInt8(off+i)); break;
+    case T.I16:  for (let i=0;i+1<n;i+=2) out.push(dv.getInt16(off+i, true)); break;
+    case T.I32:  for (let i=0;i+3<n;i+=4) out.push(dv.getInt32(off+i, true)); break;
+    case T.FX16: for (let i=0;i+1<n;i+=2) out.push(dv.getInt16(off+i, true)/2048); break;
+    case T.STR:  return [new TextDecoder().decode(new Uint8Array(dv.buffer, dv.byteOffset+off, n)).replace(/\0+$/,'')];
+  }
+  return out;
+}
+function parsePackets(dv) {
+  const cmds = []; let o = 0;
+  while (o + 8 <= dv.byteLength) {
+    const len = dv.getUint8(o+1), cmd = dv.getUint8(o+2);
+    if (len < 4) break;
+    if (cmd === 0) {
+      const type = dv.getUint8(o+6);
+      cmds.push({cat:dv.getUint8(o+4), param:dv.getUint8(o+5), type, op:dv.getUint8(o+7),
+        values: decodeValues(type, dv, o+8, Math.min(len-4, dv.byteLength-o-8))});
+    }
+    o += Math.ceil((4 + len) / 4) * 4;
+  }
+  return cmds;
+}
+
+/* =====================================================================
+   ÉTAT
+   ===================================================================== */
+const CC_DEFAULT = () => ({lift:[0,0,0,0], gamma:[0,0,0,0], gain:[1,1,1,1], offset:[0,0,0,0], contrast:[0.5,1], lumaMix:1, hueSat:[0,1]});
+function newState() { return {
+  link:'off', demo:false, name:'—',
+  iso:null, gainDb:null, shutterAngle:null, shutterSpeed:null, shutterMode:'angle',
+  fnum:null, focus:null, wbK:null, tint:null, nd:null,
+  fps:null, fpsM:false, sensorFps:null, width:null, height:null, rfFlags:0,
+  codec:null, codecVariant:null, dynRange:null, autoExp:null, sharp:null,
+  recording:false, tc:'00:00:00:00',
+  tools:0, zebraLevel:null, peakLevel:null, lut:null, lutOn:false, lcd:null, bars:0, tally:null,
+  audio:{mic:null, hp:null, hpMix:null, spk:null, input:null, levels:[null,null], phantom:null},
+  cc:CC_DEFAULT(),
+  protocol:null, ois:null, overlay:null, focusMethod:null, focusColor:null, tcSource:null,
+  tallyFront:null, tallyRear:null, lang:null, tz:null, media:[null,null], transportFlags:0,
+  overlayEn:null, zoom:null, playSpeed:0, transportMode:0,
+  slate:{reel:null, scene:'', take:null, takeTag:-1, good:false, sceneTag:-1, intExt:null, dayNight:null, slateMode:null, lensIris:'', distance:'',
+         camId:'', operator:'', director:'', project:'', lensType:'', focal:'', filter:''},
+}; }
+let S = newState();   // état de la caméra ACTIVE (réassigné quand on change de caméra)
+
+/* ---------- multicaméra ---------- */
+const CAMS = new Map();   // n° → {id, label, state}
+let ACTIVE = null;
+let OVERRIDE = null;      // cibles forcées (presets multi, REC toutes…)
+function camState(id) {
+  let c = CAMS.get(id);
+  if (!c) {
+    c = {id, label: (P.labels || {})[id] || `CAM ${id}`, state: newState()};
+    CAMS.set(id, c);
+    if (ACTIVE == null || !CAMS.has(ACTIVE) || id === P.active) setActive(id, false);
+  }
+  return c;
+}
+function setActive(id, doRender = true) {
+  if (!CAMS.has(id)) return;
+  ACTIVE = id; S = CAMS.get(id).state;
+  if (P.active !== id) { P.active = id; saveP(); }
+  if (doRender) render();
+}
+function withCam(id, fn) { const prev = S; S = camState(id).state; try { return fn(); } finally { S = prev; } }
+const isActiveState = () => !CAMS.size || S === CAMS.get(ACTIVE)?.state;
+const camOk = id => CAMS.get(id)?.state.link === 'ok';
+const okIds = () => [...CAMS.keys()].sort((a, b) => a - b).filter(camOk);
+const camLabel = id => CAMS.get(id)?.label ?? `CAM ${id}`;
+const groupIds = () => (P.group || []).filter(id => CAMS.has(id));
+/** Caméras qui reçoivent les commandes : la caméra active, ou tout le groupe lié. */
+function targets() {
+  if (OVERRIDE) return OVERRIDE.filter(camOk);
+  if (ACTIVE == null) return [];
+  const g = groupIds();
+  return (P.linked && g.includes(ACTIVE) ? g : [ACTIVE]).filter(camOk);
+}
+function withTargets(ids, fn) { const prev = OVERRIDE; OVERRIDE = ids; try { return fn(); } finally { OVERRIDE = prev; } }
+function toggleGroup(id) {
+  const g = new Set(P.group || []);
+  g.has(id) ? g.delete(id) : g.add(id);
+  P.group = [...g]; saveP(); render();
+}
+function recAll() {
+  const ids = okIds(); if (!ids.length) return toast('Aucune caméra connectée');
+  const anyRec = ids.some(id => CAMS.get(id).state.recording);
+  withTargets(ids, () => CMD.record(!anyRec));
+  toast(anyRec ? `Stop sur ${ids.length} caméra(s)` : `REC sur ${ids.length} caméra(s)`);
+}
+function cycleCam(d) {
+  const ids = [...CAMS.keys()].sort((a, b) => a - b); if (ids.length < 2) return;
+  setActive(ids[(ids.indexOf(ACTIVE) + d + ids.length) % ids.length]);
+  toast(camLabel(ACTIVE));
+}
+function renameCam(id, name) {
+  name = (name || '').trim().slice(0, 20);
+  if (RELAY) cam?.cmd('rename', {cam: id, name});
+  else { P.labels = Object.assign({}, P.labels, {[id]: name || undefined}); saveP(); if (CAMS.has(id)) CAMS.get(id).label = name || `CAM ${id}`; render(); }
+}
+function paintTc(id) {
+  const tc = CAMS.get(id)?.state.tc; if (tc == null) return;
+  document.querySelectorAll(`[data-tc="${id}"]`).forEach(e => e.textContent = tc);
+}
+const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const linkLabel = l => ({off:'Déconnectée', connecting:'Connexion…', retry:'Reconnexion…', pairing:'Appairage…', ok:'Connectée'})[l] || l;
+const connected = () => S.link === 'ok';
+
+const DEFAULT_FKEYS = ['zebra','peaking','falseColor','lut','af','awb','isoDown','isoUp'];
+const P = Object.assign({grid:false, cross:false, guide:'off', localZebra:false, zebraPct:95, histo:true,
+  presets:[], fkeys:DEFAULT_FKEYS.slice(), verbose:false, autoReconnect:true},
+  JSON.parse(localStorage.getItem('pm-prefs') || '{}'));
+const saveP = () => localStorage.setItem('pm-prefs', JSON.stringify(P));
+
+/* ---------- journal ---------- */
+const LOG = [];
+function log(msg) {
+  const t = new Date().toTimeString().slice(0,8);
+  LOG.push(`${t}  ${msg}`); if (LOG.length > 300) LOG.shift();
+  const el = document.getElementById('log');
+  if (el) { el.textContent = LOG.join('\n'); el.scrollTop = el.scrollHeight; }
+  console.log('[PM]', msg);
+}
+
+function applyCommand({cat, param, values: v}) {
+  const k = cat + '.' + param;
+  if (P.verbose) log(`← ${k} = ${v.map(x => Math.round(x*1000)/1000).join(', ')}`);
+  const A = S.audio, C = S.cc;
+  switch (k) {
+    case '0.0':  S.focus = v[0]; break;
+    case '0.2':  S.fnum = Math.sqrt(Math.pow(2, v[0])); break;
+    case '1.0':  if (v.length>=2 && !S.fps) { S.fps = v[0]; S.fpsM = !!v[1]; } break;
+    case '1.2':  S.wbK = v[0]; S.tint = v[1] ?? S.tint; break;
+    case '1.7':  S.dynRange = v[0]; break;
+    case '1.8':  S.sharp = v[0]; break;
+    case '1.9':  [S.fps, S.sensorFps, S.width, S.height, S.rfFlags] = v; S.fpsM = !!(S.rfFlags & 1); break;
+    case '1.10': S.autoExp = v[0]; break;
+    case '1.11': S.shutterAngle = v[0]/100; S.shutterMode='angle'; break;
+    case '1.12': S.shutterSpeed = v[0]; S.shutterMode='speed'; break;
+    case '1.13': S.gainDb = v[0]; break;
+    case '1.14': S.iso = v[0]; break;
+    case '1.15': S.lut = v[0]; S.lutOn = !!v[1]; break;
+    case '1.16': S.nd = v[0]; break;
+    case '2.0':  A.mic = v[0]; break;
+    case '2.1':  A.hp = v[0]; break;
+    case '2.2':  A.hpMix = v[0]; break;
+    case '2.3':  A.spk = v[0]; break;
+    case '2.4':  A.input = v[0]; break;
+    case '2.5':  A.levels = [v[0] ?? null, v[1] ?? null]; break;
+    case '2.6':  A.phantom = !!v[0]; break;
+    case '4.0':  S.lcd = v[0]; break;
+    case '4.1':  S.tools = v[0]; break;
+    case '4.2':  S.zebraLevel = v[0]; break;
+    case '4.3':  S.peakLevel = v[0]; break;
+    case '4.4':  S.bars = v[0]; break;
+    case '5.0':  S.tally = v[0]; break;
+    case '8.0':  C.lift = v.slice(0,4); break;
+    case '8.1':  C.gamma = v.slice(0,4); break;
+    case '8.2':  C.gain = v.slice(0,4); break;
+    case '8.3':  C.offset = v.slice(0,4); break;
+    case '8.4':  C.contrast = v.slice(0,2); break;
+    case '8.5':  C.lumaMix = v[0]; break;
+    case '8.6':  C.hueSat = v.slice(0,2); break;
+    case '10.0': S.codec = v[0]; S.codecVariant = v[1]; break;
+    case '0.8':  S.zoom = v[0]; break;
+    case '3.0':  S.overlayEn = v[0]; break;
+    case '12.10': S.slate.lensIris = v[0] ?? ''; break;
+    case '12.12': S.slate.distance = v[0] ?? ''; break;
+    case '12.14': S.slate.slateMode = v[0]; break;
+    case '10.1': S.transportMode = v[0]; S.playSpeed = v[1] ?? 0; S.recording = v[0] === 2; S.transportFlags = v[2] ?? 0; S.media = [v[3] ?? null, v[4] ?? null]; break;
+    case '0.6':  S.ois = !!v[0]; break;
+    case '3.3':  S.overlay = v.slice(0,4); break;
+    case '4.5':  S.focusMethod = v[0]; S.focusColor = v[1]; break;
+    case '4.7':  S.tcSource = v[0]; break;
+    case '5.1':  S.tallyFront = v[0]; break;
+    case '5.2':  S.tallyRear = v[0]; break;
+    case '7.1':  S.lang = v[0]; break;
+    case '7.2':  S.tz = v[0]; break;
+    case '12.0': S.slate.reel = v[0]; break;
+    case '12.1': S.slate.sceneTag = v[0]; S.slate.intExt = v[1]; S.slate.dayNight = v[2]; break;
+    case '12.2': S.slate.scene = v[0] ?? ''; break;
+    case '12.3': S.slate.take = v[0]; S.slate.takeTag = v[1] ?? -1; break;
+    case '12.4': S.slate.good = !!v[0]; break;
+    case '12.5': S.slate.camId = v[0] ?? ''; break;
+    case '12.6': S.slate.operator = v[0] ?? ''; break;
+    case '12.7': S.slate.director = v[0] ?? ''; break;
+    case '12.8': S.slate.project = v[0] ?? ''; break;
+    case '12.9': S.slate.lensType = v[0] ?? ''; break;
+    case '12.11': S.slate.focal = v[0] ?? ''; break;
+    case '12.13': S.slate.filter = v[0] ?? ''; break;
+    default: return;
+  }
+  render();
+}
+
+/* =====================================================================
+   TRANSPORT BLE — avec reconnexion automatique
+   ===================================================================== */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* Une caméra en Bluetooth direct (Chrome / Edge / Bluefy). Tout l'état passe par withCam(id). */
+class BleCamera {
+  constructor(device, id) { this.device = device; this.id = id; this.q = Promise.resolve(); this.want = false; this.retrying = false; }
+  static async pick() {
+    if (!navigator.bluetooth) throw new Error(window.isSecureContext === false
+      ? 'Bluetooth bloqué : la page doit être ouverte en https (ou sur localhost).'
+      : 'Web Bluetooth indisponible : utilisez Chrome, Edge ou Bluefy (iPad).');
+    return navigator.bluetooth.requestDevice({filters:[{services:[UUID.service]}], optionalServices:['device_information']});
+  }
+  ctx(fn) { return withCam(this.id, fn); }
+  link(l) { this.ctx(() => S.link = l); render(); }
+  log(m) { log(`[${camLabel(this.id)}] ${m}`); }
+  async connect() {
+    this.want = true;
+    if (!this.bound) { this.device.addEventListener('gattserverdisconnected', () => this.onDrop()); this.bound = true; }
+    this.ctx(() => S.name = this.device.name || 'Pocket 4K');
+    try { await this.setup(); }
+    catch (e) {
+      this.log('Échec de connexion : ' + (e.message || e));
+      if (!this.everOk) { this.pairingLost(e); return; }
+      if (!this.device.gatt.connected) this.onDrop(); else throw e;
+    }
+  }
+  /* Appairage : chaque nouvelle tentative de connexion fait afficher un NOUVEAU code par la caméra,
+     donc on ne relance jamais automatiquement pendant cette phase : on attend l'utilisateur. */
+  async withPairing(op, label) {
+    for (let i = 0; i < 40 && this.want; i++) {
+      try { const r = await op(); pairUI.hide(this); this.log(`${label} ✓`); return r; }
+      catch (e) {
+        this.log(`Accès chiffré refusé (${e.name}: ${e.message}) — appairage en attente`);
+        if (!this.device.gatt.connected) throw e;
+        this.link('pairing');
+        pairUI.show('waiting', e.message, this);
+        await Promise.race([sleep(6000), pairUI.waitContinue()]);
+      }
+    }
+    throw new Error('Appairage non abouti');
+  }
+  pairingLost(e) { this.link('pairing'); pairUI.show('lost', e?.message, this); }
+  async retryPairing() {
+    this.want = true;
+    pairUI.show('waiting', '', this);
+    try { await this.setup(); }
+    catch (e) { this.log('Échec : ' + (e.message || e)); this.pairingLost(e); }
+  }
+  async setup() {
+    this.link('connecting');
+    this.log(`Connexion à « ${this.device.name} »…`);
+    this.server = await this.device.gatt.connect();
+    const svc = await this.server.getPrimaryService(UUID.service);
+    this.out = await svc.getCharacteristic(UUID.outgoing);
+    const inc = await svc.getCharacteristic(UUID.incoming);
+    if (!this.incBound) {
+      inc.addEventListener('characteristicvaluechanged', e => this.ctx(() => parsePackets(e.target.value).forEach(applyCommand)));
+      this.incBound = true;
+    }
+    try {
+      const pv = await (await svc.getCharacteristic(UUID.protocol)).readValue();   // non chiffré
+      const v = new TextDecoder().decode(pv).replace(/\0+$/,'') || [...new Uint8Array(pv.buffer)].join('.');
+      this.ctx(() => S.protocol = v);
+    } catch (e) {}
+    // D'après le manuel : écrire « Camera Power On » (0x01) sur Camera Status (chiffré) déclenche
+    // l'appairage → la caméra affiche un code à 6 chiffres dans Setup → Bluetooth.
+    this.status = await svc.getCharacteristic(UUID.status);
+    this.log('Vérification de l\'appairage (code PIN dans Setup → Bluetooth de la caméra si demandé)…');
+    await this.withPairing(() => this.status.writeValueWithResponse
+      ? this.status.writeValueWithResponse(Uint8Array.of(0x01)) : this.status.writeValue(Uint8Array.of(0x01)), 'appairage');
+    await this.withPairing(() => inc.startNotifications(), 'réception des réglages');
+    try {
+      const tc = await svc.getCharacteristic(UUID.timecode);
+      if (!this.tcBound) { tc.addEventListener('characteristicvaluechanged', e => this.ctx(() => onTimecode(e.target.value))); this.tcBound = true; }
+      await tc.startNotifications();
+    } catch (e) { this.log('Timecode indisponible : ' + e.message); }
+    try {
+      if (!this.stBound) { this.status.addEventListener('characteristicvaluechanged', e => logStatus(e.target.value.getUint8(0))); this.stBound = true; }
+      await this.status.startNotifications();
+    } catch (e) {}
+    try { const dn = await svc.getCharacteristic(UUID.devName); await dn.writeValue(new TextEncoder().encode('Pocket Monitor')); } catch (e) {}
+    this.everOk = true;
+    pairUI.hide(this);
+    this.link('ok');
+    this.log('Connectée ✓');
+  }
+  async onDrop() {
+    if (!this.want || this.retrying) return;
+    this.log('Lien Bluetooth perdu');
+    if (!this.everOk) { this.pairingLost(); return; }   // pas de relance auto avant le 1er appairage réussi
+    if (!P.autoReconnect) { this.link('off'); return; }
+    this.retrying = true;
+    for (let n = 0; n < 10 && this.want; n++) {
+      this.link('retry');
+      const wait = Math.min(2000 * 2 ** n, 15000);
+      this.log(`Reconnexion dans ${wait/1000}s (essai ${n+1}/10)`);
+      await sleep(wait);
+      if (!this.want) break;
+      try { await this.setup(); this.retrying = false; toast(`${camLabel(this.id)} reconnectée`); return; }
+      catch (e) { this.log('  échec : ' + (e.message || e)); }
+    }
+    this.retrying = false;
+    if (this.want) this.link('off');
+  }
+  send(buf) {
+    if (P.verbose) this.log('→ ' + [...buf].map(b => b.toString(16).padStart(2,'0')).join(' '));
+    this.q = this.q.then(() => {
+      if (!this.device.gatt.connected) throw new Error('non connectée');
+      return this.out.writeValueWithResponse ? this.out.writeValueWithResponse(buf) : this.out.writeValue(buf);
+    }).catch(e => this.log('Écriture échouée : ' + e.message));
+    return this.q;
+  }
+  async power(on) { try { await this.status?.writeValue(Uint8Array.of(on ? 1 : 0)); } catch (e) { this.log(e.message); } }
+  disconnect() { this.want = false; if (this.device?.gatt?.connected) this.device.gatt.disconnect(); this.link('off'); }
+}
+
+/* Plusieurs caméras en Bluetooth direct (une connexion par caméra). */
+class BleHub {
+  constructor() { this.cams = new Map(); }
+  async add(device) {
+    const map = P.bleIds || {};
+    let id = map[device.id];
+    if (id == null || (this.cams.has(id) && this.cams.get(id).device.id !== device.id)) {
+      id = 1; while (this.cams.has(id) || Object.values(map).includes(id)) id++;
+      P.bleIds = Object.assign({}, map, {[device.id]: id}); saveP();
+    }
+    let c = this.cams.get(id);
+    if (!c) { c = new BleCamera(device, id); this.cams.set(id, c); }
+    camState(id); setActive(id, false); render();
+    await c.connect();
+  }
+  send(buf, id) { this.cams.get(id)?.send(buf); }
+  cmd(c, x = {}) {
+    const b = this.cams.get(x.cam ?? ACTIVE);
+    if (c === 'pair' || c === 'connect') b?.retryPairing();
+    else if (c === 'disconnect') b?.disconnect();
+    else if (c === 'power') b?.power(false);
+    else if (c === 'poweron') b?.power(true);
+    else if (c === 'rename') renameCam(x.cam, x.name);
+  }
+  powerOff() { targets().forEach(id => this.cams.get(id)?.power(false)); }
+  disconnect() { this.cams.forEach(c => c.disconnect()); }
+}
+const pairUI = {
+  resolve: null, mode: null, cam: null,
+  show(mode, err, camObj) {
+    this.mode = mode; this.cam = camObj || this.cam;
+    const lbl = this.cam ? camLabel(this.cam.id) : 'la caméra';
+    $id('pairMsg').textContent = mode === 'lost'
+      ? `${lbl} a fermé la connexion pendant l'appairage (fréquent juste après la saisie du code). Si vous avez saisi le code, touchez Réessayer.`
+      : `${lbl} : en attente de l'appairage. Le code à 6 chiffres s'affiche dans Setup → Bluetooth de la caméra.`;
+    $id('pairGo').textContent = mode === 'lost' ? 'Réessayer' : 'Continuer';
+    $id('pairErr').textContent = err ? 'Détail : ' + err : '';
+    $id('pair').classList.add('open');
+  },
+  hide(camObj) { if (camObj && this.cam && camObj !== this.cam) return; this.mode = null; $id('pair').classList.remove('open'); },
+  waitContinue() { return new Promise(r => this.resolve = r); },
+};
+$id('pairGo').onclick = () => {
+  if (pairUI.mode === 'lost') pairUI.cam?.retryPairing?.();
+  else { pairUI.resolve?.(); pairUI.resolve = null; }
+};
+$id('pairCancel').onclick = () => { const c = pairUI.cam; pairUI.hide(); c?.disconnect?.(); };
+function logStatus(f) {
+  const names = [[1,'allumée'],[2,'connectée'],[4,'appairée'],[8,'versions OK'],[16,'données initiales reçues'],[32,'prête']];
+  log(`Statut caméra 0x${f.toString(16)} : ${names.filter(([b]) => f & b).map(([,n]) => n).join(', ') || 'aucun'}`);
+}
+
+/* ---------- caméras simulées (mode démo : 3 caméras) ---------- */
+class DemoCamera {
+  constructor(id, v = 0) { this.id = id; this.v = v; }
+  async connect() {
+    const v = this.v, isos = [400, 800, 400, 640], wbs = [5600, 5600, 4300, 5600], cod = [[3,2],[3,3],[2,1],[3,2]];
+    withCam(this.id, () => { S.name = `Caméra simulée ${this.id}`; S.protocol = 'démo'; S.demo = true; });
+    const init = [
+      packet(1,14,T.I32,enc.i32([isos[v%4]])), packet(1,11,T.I32,enc.i32([18000])),
+      packet(0,2,T.FX16,enc.fx([Math.log2(2.8*2.8)])), packet(0,0,T.FX16,enc.fx([0.42])),
+      packet(1,2,T.I16,enc.i16([wbs[v%4],0])), packet(1,7,T.I8,enc.i8([0])),
+      packet(1,9,T.I16,enc.i16([24,24,4096,2160,1])), packet(10,0,T.I8,enc.i8(cod[v%4])),
+      packet(4,1,T.I16,enc.i16([0])), packet(4,2,T.FX16,enc.fx([0.95])), packet(4,3,T.FX16,enc.fx([0.5])),
+      packet(1,10,T.I8,enc.i8([0])), packet(1,15,T.I8,enc.i8([2,0])), packet(4,0,T.FX16,enc.fx([0.8])),
+      packet(5,0,T.FX16,enc.fx([1])), packet(2,0,T.FX16,enc.fx([0.5])), packet(2,1,T.FX16,enc.fx([0.6])),
+      packet(2,4,T.I8,enc.i8([0])), packet(2,6,T.VOID,Uint8Array.of(0)), packet(2,5,T.FX16,enc.fx([0.5,0.5])),
+      packet(10,1,T.I8,enc.i8([0,0,0,0,1])), packet(3,3,T.I8,enc.i8([0,100,0,0])), packet(4,5,T.I8,enc.i8([0,0])),
+      packet(4,7,T.I8,enc.i8([1])), packet(5,1,T.FX16,enc.fx([1])), packet(5,2,T.FX16,enc.fx([1])),
+      packet(7,1,T.STR,new TextEncoder().encode('fr')), packet(7,2,T.I32,enc.i32([60])), packet(0,6,T.VOID,Uint8Array.of(1)),
+      packet(12,0,T.I16,enc.i16([1])), packet(12,3,T.I8,enc.i8([1,-1])), packet(12,1,T.I8,enc.i8([-1,0,1])),
+      packet(12,8,T.STR,new TextEncoder().encode('Projet démo')),
+    ];
+    init.forEach(p => this.echo(p));
+    withCam(this.id, () => S.link = 'ok');
+    this.frames = 0;
+    this.timer = setInterval(() => {
+      const changed = withCam(this.id, () => {
+        if (!S.recording) return false;
+        this.frames += Math.round((S.fps||24) / 10);
+        const f = this.frames, fps = Math.round(S.fps||24), pad = n => String(n).padStart(2,'0');
+        S.tc = `${pad(Math.floor(f/fps/3600))}:${pad(Math.floor(f/fps/60)%60)}:${pad(Math.floor(f/fps)%60)}:${pad(f%fps)}`;
+        return true;
+      });
+      if (changed) { paintTc(this.id); if (this.id === ACTIVE) renderTc(); }
+    }, 100);
+  }
+  echo(buf) { withCam(this.id, () => parsePackets(new DataView(buf.buffer)).forEach(applyCommand)); }
+  send(buf) {
+    if (P.verbose) log(`→ [${camLabel(this.id)}] ` + [...buf].map(b => b.toString(16).padStart(2,'0')).join(' '));
+    const [c] = parsePackets(new DataView(buf.buffer));
+    if (!c) return;
+    if (c.cat===1 && c.param===3) return this.echo(packet(1,2,T.I16,enc.i16([5600,0])));
+    if (c.cat===0 && c.param===1) return this.echo(packet(0,0,T.FX16,enc.fx([0.3+Math.random()*0.4])));
+    if (c.cat===0 && c.param===5) return this.echo(packet(0,2,T.FX16,enc.fx([Math.log2(4*4)])));
+    if (c.cat===8 && c.param===7) { const d = CC_DEFAULT();
+      [[0,d.lift],[1,d.gamma],[2,d.gain],[3,d.offset],[4,d.contrast],[5,[d.lumaMix]],[6,d.hueSat]].forEach(([p,a]) => this.echo(packet(8,p,T.FX16,enc.fx(a)))); return; }
+    setTimeout(() => this.echo(buf), 50);
+  }
+  disconnect() { clearInterval(this.timer); }
+}
+class DemoHub {
+  constructor(n) { this.n = n; this.cams = new Map(); }
+  async connect() {
+    for (let i = 1; i <= this.n; i++) { const d = new DemoCamera(i, i - 1); this.cams.set(i, d); camState(i); await d.connect(); }
+    setActive(CAMS.has(P.active) ? P.active : 1);
+  }
+  send(buf, id) { this.cams.get(id)?.send(buf); }
+  cmd() {}
+  powerOff() { targets().forEach(id => withCam(id, () => { S.link = 'off'; S.recording = false; })); toast('Démo : extinction simulée'); render(); }
+  disconnect() { this.cams.forEach(c => c.disconnect()); }
+}
+
+/* ---------- relais via l'app Mac (WebSocket, multicaméra) ---------- */
+let RELAY = null;
+class RelayCamera {
+  constructor(port){ this.port = port; this.alive = true; }
+  connect(){ this.open(); }
+  open() {
+    const ws = this.ws = new WebSocket(`ws://${location.hostname}:${this.port}`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => log('Relais Mac connecté');
+    ws.onmessage = e => {
+      if (typeof e.data === 'string') {
+        const m = JSON.parse(e.data);
+        if (m.type === 'cams') this.onCams(m.cams || []);
+        else if (m.type === 'log') log('[Mac] ' + m.msg);
+        return;
+      }
+      const u8 = new Uint8Array(e.data);
+      if (u8.length < 2) return;
+      const kind = u8[0], id = u8[1], dv = new DataView(e.data, 2);
+      camState(id);
+      withCam(id, () => { if (kind === 2) parsePackets(dv).forEach(applyCommand); else if (kind === 3) onTimecode(dv); });
+    };
+    ws.onclose = () => {
+      if (!this.alive) return;
+      CAMS.forEach(c => c.state.link = 'retry'); render();
+      log('Relais Mac injoignable — nouvelle tentative…');
+      setTimeout(() => this.alive && this.open(), 2000);
+    };
+  }
+  onCams(list) {
+    const L = {ok:'ok', retry:'retry', connecting:'connecting', scanning:'connecting', pairing:'pairing'};
+    const seen = new Set();
+    list.forEach(c => {
+      seen.add(c.id);
+      const cs = camState(c.id);
+      if (c.label) cs.label = c.label;
+      Object.assign(cs.state, {name: c.name || '—', protocol: c.protocol || null, link: L[c.link] || 'off'});
+    });
+    [...CAMS.keys()].forEach(id => { if (!seen.has(id)) CAMS.delete(id); });
+    if (!CAMS.has(ACTIVE)) {
+      const first = [...CAMS.keys()].sort((a, b) => a - b)[0];
+      if (first != null) setActive(first, false); else { ACTIVE = null; S = newState(); }
+    }
+    render();
+  }
+  send(buf, id = ACTIVE) {
+    if (P.verbose) log(`→ [${camLabel(id)}] ` + [...buf].map(b => b.toString(16).padStart(2,'0')).join(' '));
+    if (this.ws?.readyState !== 1 || id == null) return;
+    const m = new Uint8Array(buf.length + 2); m[0] = 1; m[1] = id; m.set(buf, 2); this.ws.send(m);
+  }
+  cmd(c, extra = {}) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(Object.assign({cmd: c}, extra))); }
+  powerOff() { targets().forEach(id => this.cmd('power', {cam: id})); }
+  disconnect() { this.cmd('disconnect', {cam: ACTIVE}); }
+}
+
+let cam = null;
+function setLink(l){ S.link = l; render(); }
+function onTimecode(dv) {
+  const o = dv.byteLength >= 12 ? 8 : 0;
+  if (dv.byteLength < o + 4) return;
+  const bcd = b => ((b >> 4) * 10 + (b & 0x0f)).toString().padStart(2,'0');
+  S.tc = `${bcd(dv.getUint8(o+3) & 0x3f)}:${bcd(dv.getUint8(o+2))}:${bcd(dv.getUint8(o+1))}:${bcd(dv.getUint8(o))}`;
+  const me = [...CAMS.values()].find(c => c.state === S);
+  if (me) paintTc(me.id);
+  if (isActiveState()) renderTc();
+}
+function onDisconnected() {
+  cam?.disconnect?.(); cam = null;
+  [S, ...[...CAMS.values()].map(c => c.state)].forEach(st => Object.assign(st, {demo:false, recording:false, link:'off'}));
+  render(); toast('Caméra déconnectée'); log('Déconnecté');
+}
+async function connect(demo=false, device=null) {
+  try {
+    if (demo) {
+      cam?.disconnect?.();
+      cam = new DemoHub(3); await cam.connect();
+      toast('Mode démo : 3 caméras simulées'); return;
+    }
+    const dev = device || await BleCamera.pick();
+    if (!(cam instanceof BleHub)) { cam?.disconnect?.(); cam = new BleHub(); }
+    await cam.add(dev);
+    if (connected()) toast(`${camLabel(ACTIVE)} connectée`);
+  } catch (e) {
+    if (e.name !== 'NotFoundError') { toast(e.message || String(e)); log('Erreur : ' + (e.message || e)); }
+    if (!connected() && S.link !== 'retry') { cam = null; setLink('off'); }
+  }
+}
+async function quickReconnect() {
+  if (!navigator.bluetooth?.getDevices) return toast('Reconnexion rapide non prise en charge par ce navigateur');
+  const devs = await navigator.bluetooth.getDevices();
+  if (!devs.length) return toast('Aucune caméra mémorisée : utilisez « Ajouter une caméra »');
+  for (const d of devs) await connect(false, d);
+}
+function send(buf) {
+  if (!cam) { toast('Pas de caméra connectée — appuyez sur BLE'); return false; }
+  const ids = targets();
+  if (!ids.length) { toast(S.link === 'retry' ? 'Reconnexion en cours…' : 'Caméra non connectée'); return false; }
+  ids.forEach(id => cam.send(buf, id));
+  return true;
+}
+
+/* ---------- commandes ---------- */
+const CMD = {
+  iso:     v => send(packet(1,14,T.I32,enc.i32([v]))),
+  angle:   v => send(packet(1,11,T.I32,enc.i32([Math.round(v*100)]))),
+  speed:   v => send(packet(1,12,T.I32,enc.i32([v]))),
+  fstop:   f => send(packet(0,2,T.FX16,enc.fx([Math.log2(f*f)]))),
+  focus:   v => send(packet(0,0,T.FX16,enc.fx([Math.max(0,Math.min(1,v))]))),
+  af:      () => send(packet(0,1,T.VOID)),
+  autoIris:() => send(packet(0,5,T.VOID)),
+  wb:      (k,t=S.tint??0) => send(packet(1,2,T.I16,enc.i16([k,t]))),
+  autoWb:  () => send(packet(1,3,T.VOID)),
+  dynRange:v => send(packet(1,7,T.I8,enc.i8([v]))),
+  sharp:   v => send(packet(1,8,T.I8,enc.i8([v]))),
+  autoExp: v => send(packet(1,10,T.I8,enc.i8([v]))),
+  lut:     (l,on) => send(packet(1,15,T.I8,enc.i8([l,on?1:0]))),
+  codec:   (c,v) => send(packet(10,0,T.I8,enc.i8([c,v]))),
+  record:  on => send(packet(10,1,T.I8,enc.i8([on?2:0,0,0,0,0]))),
+  tools:   f => send(packet(4,1,T.I16,enc.i16([f]))),
+  zebraLvl:v => send(packet(4,2,T.FX16,enc.fx([v]))),
+  peakLvl: v => send(packet(4,3,T.FX16,enc.fx([v]))),
+  lcd:     v => send(packet(4,0,T.FX16,enc.fx([v]))),
+  bars:    s => send(packet(4,4,T.I8,enc.i8([s]))),
+  tally:   v => send(packet(5,0,T.FX16,enc.fx([v]))),
+  cc:      (p,a) => send(packet(8,p,T.FX16,enc.fx(a))),
+  ccReset: () => send(packet(8,7,T.VOID)),
+  audio:   (p,a) => send(packet(2,p,T.FX16,enc.fx(a))),
+  audioIn: v => send(packet(2,4,T.I8,enc.i8([v]))),
+  phantom: on => send(packet(2,6,T.VOID,Uint8Array.of(on?1:0))),
+  fps(fps, m) {
+    if (S.width == null) { toast('Format inconnu : attendez la synchro caméra'); return; }
+    const flags = (S.rfFlags & ~0x07) | (m ? 0x03 : 0);
+    send(packet(1,9,T.I16,enc.i16([fps, fps, S.width, S.height, flags])));
+  },
+  /* 1.9 = [cadence fichier, cadence capteur, largeur, hauteur, flags]
+     flags : 0x01 M-rate fichier, 0x02 M-rate capteur, 0x04 off-speed, 0x08 entrelacé, 0x10 fenêtré */
+  recFormat({fps=S.fps, sensor=S.sensorFps ?? S.fps, w=S.width, h=S.height, flags=S.rfFlags}) {
+    if (w == null || fps == null) { toast('Format inconnu : attendez la synchro caméra'); return; }
+    send(packet(1,9,T.I16,enc.i16([fps, sensor, w, h, flags])));
+  },
+  ois:     on => send(packet(0,6,T.VOID,Uint8Array.of(on?1:0))),
+  zoomTo:  v => send(packet(0,8,T.FX16,enc.fx([Math.max(0,Math.min(1,v))]))),
+  zoomRun: v => send(packet(0,9,T.FX16,enc.fx([v]))),
+  overlayEn: f => send(packet(3,0,T.I16,enc.i16([f]))),
+  still:   () => send(packet(10,3,T.VOID)),
+  // 10.1 transport : [mode 0=aperçu 1=lecture 2=REC, vitesse, flags, support 1, support 2]
+  transport: (mode, speed=0, flags=S.transportFlags & 0x03) => send(packet(10,1,T.I8,enc.i8([mode, speed, flags, S.media[0] ?? 0, S.media[1] ?? 0]))),
+  clip:    next => send(packet(10,2,T.I8,enc.i8([next?1:0]))),
+  scene12_1: (tag, ie, dn) => send(packet(12,1,T.I8,enc.i8([tag, ie, dn]))),
+  overlay: a => send(packet(3,3,T.I8,enc.i8(a))),
+  focusAssist: (m,c) => send(packet(4,5,T.I8,enc.i8([m,c]))),
+  tcSource:v => send(packet(4,7,T.I8,enc.i8([v]))),
+  tallyFR: (p,v) => send(packet(5,p,T.FX16,enc.fx([v]))),
+  str:     (c,p,s) => send(packet(c,p,T.STR,new TextEncoder().encode(s))),
+  i8:      (c,p,a) => send(packet(c,p,T.I8,enc.i8(a))),
+  i16:     (c,p,a) => send(packet(c,p,T.I16,enc.i16(a))),
+  bool:    (c,p,on) => send(packet(c,p,T.VOID,Uint8Array.of(on?1:0))),
+  clock() {
+    const d = new Date(), p = n => String(n).padStart(2,'0');
+    const bcd = s => parseInt(s, 16);   // "13450700" → 0x13450700
+    send(packet(7,0,T.I32,enc.i32([bcd(`${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}00`),
+                                   bcd(`${d.getUTCFullYear()}${p(d.getUTCMonth()+1)}${p(d.getUTCDate())}`)])));
+    send(packet(7,2,T.I32,enc.i32([-d.getTimezoneOffset()])));
+    toast('Horloge caméra synchronisée');
+  },
+};
+const toggleTool = bit => CMD.tools((S.tools||0) ^ bit);
+
+/* =====================================================================
+   LISTES DE VALEURS
+   ===================================================================== */
+const ISOS = [100,125,160,200,250,320,400,500,640,800,1000,1250,1600,2000,2500,3200,4000,5000,6400,8000,10000,12800,16000,20000,25600];
+const ANGLES = [11.2,15,22.5,30,37.5,45,60,72,75,90,108,120,144,150,172.8,180,216,270,324,360];
+const SPEEDS = [24,25,30,48,50,60,96,100,120,125,160,200,250,320,500,1000,2000];
+const FSTOPS = [1.4,1.6,1.8,2,2.2,2.5,2.8,3.2,3.5,4,4.5,5,5.6,6.3,7.1,8,9,10,11,13,14,16,18,20,22];
+const WB_PRESETS = [['☀ Soleil',5600],['☁ Nuageux',6500],['⛱ Ombre',7500],['💡 Tungstène',3200],['▤ Fluo',4000]];
+const FPS_LIST = [[23.98,24,true],[24,24,false],[25,25,false],[29.97,30,true],[30,30,false],[50,50,false],[59.94,60,true],[60,60,false]];
+const BRAW_V = Object.assign([], {0:'Q0',1:'Q5',2:'3:1',3:'5:1',4:'8:1',5:'12:1',7:'Q1',8:'Q3'});
+const CODECS = {3:['BRAW',BRAW_V], 2:['ProRes',['HQ','422','LT','Proxy','444','444 XQ']], 0:['CinemaDNG',['RAW','3:1','4:1']], 1:['DNx',['HD']]};
+const CODEC_CHOICES = [[3,2],[3,3],[3,4],[3,5],[3,0],[3,7],[3,8],[3,1],[2,0],[2,1],[2,2],[2,3]];
+const DR = ['Film','Vidéo','Ext. vidéo'];
+const LUTS = ['Aucune','Personnalisée','Film → Vidéo','Film → Ext. vidéo'];
+const GUIDES = {off:null,'2.39:1':2.39,'1.85:1':1.85,'4:3':4/3,'1:1':1,'9:16':9/16,'4:5':0.8};
+const AUDIO_IN = ['Micro interne','Ligne','Micro bas','Micro haut'];
+const RESOLUTIONS = [
+  {l:'4K DCI', w:4096, h:2160, win:false}, {l:'4K 2.4:1', w:4096, h:1720}, {l:'Ultra HD', w:3840, h:2160},
+  {l:'2.8K Ana', w:2880, h:2160}, {l:'2.6K 16:9', w:2688, h:1512},
+  {l:'HD (plein capteur)', w:1920, h:1080, win:false}, {l:'HD (fenêtré)', w:1920, h:1080, win:true}];
+const SENSOR_FPS = [24,25,30,48,50,60,75,100,120];
+const MEDIA = {0:'CFast', 1:'SD', 2:'SSD', 3:'USB'};
+const SHOT_TAGS = [[-1,'—'],[0,'WS'],[1,'CU'],[2,'MS'],[3,'BCU'],[4,'MCU'],[5,'ECU']];
+const LANGS = [['fr','Français'],['en','English'],['de','Deutsch'],['es','Español'],['it','Italiano'],['ja','日本語'],['zh','中文'],['ko','한국어'],['pt','Português'],['ru','Русский']];
+const FG_STYLES = ['Off','2.4:1','2.39:1','2.35:1','1.85:1','16:9','14:9','4:3','2:1','4:5','1:1'];
+const FA_COLORS = ['Rouge','Vert','Bleu','Blanc','Noir'];
+
+function nearestIdx(list, v){ let b=0; list.forEach((x,i)=>{ if (Math.abs(x-v) < Math.abs(list[b]-v)) b=i; }); return b; }
+function step(list, cur, d){ if (cur==null) return null; const i = nearestIdx(list, cur); return list[Math.max(0, Math.min(list.length-1, i+d))]; }
+
+/* =====================================================================
+   ACTIONS ASSIGNABLES (touches de fonction)
+   ===================================================================== */
+const ACTIONS = {
+  none:      {l:'Aucune', s:'—', g:'—'},
+  rec:       {l:'Enregistrer / Stop', s:'REC', g:'Caméra', run:()=>CMD.record(!S.recording), on:()=>S.recording},
+  still:     {l:'Capture d\'image fixe', s:'PHOTO', g:'Caméra', run:()=>CMD.still()},
+  play:      {l:'Lecture / pause', s:'PLAY', g:'Caméra', run:()=>S.transportMode===1 && S.playSpeed ? CMD.transport(1,0) : CMD.transport(1,1), on:()=>S.transportMode===1},
+  preview:   {l:'Retour à l\'aperçu', s:'LIVE', g:'Caméra', run:()=>CMD.transport(0)},
+  clipPrev:  {l:'Clip précédent', s:'⏮', g:'Caméra', run:()=>CMD.clip(false)},
+  clipNext:  {l:'Clip suivant', s:'⏭', g:'Caméra', run:()=>CMD.clip(true)},
+  goodTake:  {l:'Bonne prise', s:'GOOD', g:'Slate', run:()=>CMD.bool(12,4,!S.slate.good), on:()=>S.slate.good},
+  takeUp:    {l:'Prise suivante', s:'TAKE +', g:'Slate', run:()=>CMD.i8(12,3,[Math.min(99,(S.slate.take||0)+1), S.slate.takeTag ?? -1])},
+  zoomIn:    {l:'Zoom télé (pas)', s:'ZOOM +', g:'Image', run:()=>S.zoom!=null&&CMD.zoomTo(S.zoom+0.05)},
+  zoomOut:   {l:'Zoom grand-angle (pas)', s:'ZOOM −', g:'Image', run:()=>S.zoom!=null&&CMD.zoomTo(S.zoom-0.05)},
+  af:        {l:'Autofocus', s:'AF', g:'Caméra', run:()=>CMD.af()},
+  autoIris:  {l:'Iris auto', s:'IRIS A', g:'Caméra', run:()=>CMD.autoIris()},
+  awb:       {l:'Balance auto', s:'AWB', g:'Caméra', run:()=>CMD.autoWb()},
+  zebra:     {l:'Zebra (caméra)', s:'ZEBRA', g:'Outils caméra', run:()=>toggleTool(1), on:()=>!!(S.tools&1)},
+  peaking:   {l:'Focus assist (caméra)', s:'PEAK', g:'Outils caméra', run:()=>toggleTool(2), on:()=>!!(S.tools&2)},
+  falseColor:{l:'False color (caméra)', s:'FALSE C', g:'Outils caméra', run:()=>toggleTool(4), on:()=>!!(S.tools&4)},
+  lut:       {l:'LUT d\'affichage on/off', s:'LUT', g:'Outils caméra', run:()=>CMD.lut(S.lut||2, !S.lutOn), on:()=>S.lutOn},
+  bars:      {l:'Mire de couleurs', s:'BARS', g:'Outils caméra', run:()=>CMD.bars(S.bars?0:30), on:()=>!!S.bars},
+  dr:        {l:'Plage dynamique suivante', s:'DR', g:'Image', run:()=>CMD.dynRange(((S.dynRange??0)+1)%3)},
+  isoUp:     {l:'ISO +', s:'ISO +', g:'Image', run:()=>{ const v=step(ISOS,S.iso,1); v&&CMD.iso(v); }},
+  isoDown:   {l:'ISO −', s:'ISO −', g:'Image', run:()=>{ const v=step(ISOS,S.iso,-1); v&&CMD.iso(v); }},
+  irisClose: {l:'Fermer iris (⅓)', s:'IRIS +', g:'Image', run:()=>{ const v=step(FSTOPS,S.fnum,1); v&&CMD.fstop(v); }},
+  irisOpen:  {l:'Ouvrir iris (⅓)', s:'IRIS −', g:'Image', run:()=>{ const v=step(FSTOPS,S.fnum,-1); v&&CMD.fstop(v); }},
+  shutUp:    {l:'Obturateur +', s:'SHUT +', g:'Image', run:()=>shutterStep(1)},
+  shutDown:  {l:'Obturateur −', s:'SHUT −', g:'Image', run:()=>shutterStep(-1)},
+  wbUp:      {l:'Balance +200K', s:'WB +', g:'Image', run:()=>S.wbK!=null&&CMD.wb(Math.min(10000,S.wbK+200))},
+  wbDown:    {l:'Balance −200K', s:'WB −', g:'Image', run:()=>S.wbK!=null&&CMD.wb(Math.max(2500,S.wbK-200))},
+  focusNear: {l:'Focus proche', s:'FOC −', g:'Image', run:()=>S.focus!=null&&CMD.focus(S.focus-0.02)},
+  focusFar:  {l:'Focus lointain', s:'FOC +', g:'Image', run:()=>S.focus!=null&&CMD.focus(S.focus+0.02)},
+  presets:   {l:'Ouvrir les presets', s:'PRESETS', g:'Interface', run:()=>showPicker('presets')},
+  recAll:    {l:'REC / stop toutes les caméras', s:'REC ALL', g:'Multicam', run:()=>recAll(), on:()=>okIds().some(id=>CAMS.get(id).state.recording)},
+  linked:    {l:'Commandes liées on/off', s:'LIEN', g:'Multicam', run:()=>toggleP('linked'), on:()=>!!P.linked},
+  camNext:   {l:'Caméra suivante', s:'CAM ▶', g:'Multicam', run:()=>cycleCam(1)},
+  camPrev:   {l:'Caméra précédente', s:'◀ CAM', g:'Multicam', run:()=>cycleCam(-1)},
+  menu:      {l:'Ouvrir le menu', s:'MENU', g:'Interface', run:()=>openMenu()},
+};
+function toggleP(k){ P[k] = !P[k]; saveP(); render(); }
+function shutterStep(d){
+  if (S.shutterMode==='angle') { const v=step(ANGLES,S.shutterAngle,d); v&&CMD.angle(v); }
+  else { const v=step(SPEEDS,S.shutterSpeed,d); v&&CMD.speed(v); }
+}
+function getAction(id) {
+  if (id?.startsWith('preset:')) {
+    const p = P.presets.find(x => x.id === id.slice(7));
+    return p ? {l:'Preset : '+p.name, s:p.name.slice(0,9).toUpperCase(), g:'Presets', run:()=>recallPreset(p)} : ACTIONS.none;
+  }
+  return ACTIONS[id] || ACTIONS.none;
+}
+function allActionIds(){ return [...Object.keys(ACTIONS), ...P.presets.map(p => 'preset:'+p.id)]; }
+function runFkey(i){ const a = getAction(P.fkeys[i]); a.run?.(); flash(i); }
+function flash(i){ const b = document.querySelector(`.fkey[data-i="${i}"]`); if (b){ b.style.background='#3a3a3a'; setTimeout(()=>b.style.background='',150);} }
+
+/* =====================================================================
+   PRESETS (stockés dans l'app — l'API BLE n'expose pas les presets internes)
+   ===================================================================== */
+const GROUPS = {
+  expo:    'Exposition (ISO, obturateur, iris)',
+  wb:      'Balance des blancs',
+  format:  'Format (codec, cadence, plage dyn.)',
+  display: 'Affichage (zebra, peaking, LUT…)',
+  color:   'Correction couleur',
+  audio:   'Audio',
+};
+function snapshot(groups) {
+  const d = {};
+  if (groups.includes('expo'))    d.expo = {iso:S.iso, shutterMode:S.shutterMode, angle:S.shutterAngle, speed:S.shutterSpeed, fnum:S.fnum};
+  if (groups.includes('wb'))      d.wb = {k:S.wbK, tint:S.tint};
+  if (groups.includes('format'))  d.format = {codec:S.codec, variant:S.codecVariant, fps:S.fps, fpsM:S.fpsM, dr:S.dynRange};
+  if (groups.includes('display')) d.display = {tools:S.tools, zebra:S.zebraLevel, peak:S.peakLevel, lut:S.lut, lutOn:S.lutOn};
+  if (groups.includes('color'))   d.color = JSON.parse(JSON.stringify(S.cc));
+  if (groups.includes('audio'))   d.audio = JSON.parse(JSON.stringify(S.audio));
+  return d;
+}
+function savePreset(name, groups) {
+  if (!connected()) return toast('Connectez la caméra pour capturer ses réglages');
+  const p = {id: Date.now().toString(36), name: name || `Preset ${P.presets.length+1}`, created: new Date().toISOString(), data: snapshot(groups)};
+  P.presets.push(p); saveP(); render(); toast(`« ${p.name} » enregistré`);
+}
+/** Applique un preset à une ou plusieurs caméras (par défaut : les cibles actuelles). */
+function recallPreset(p, ids = targets()) {
+  if (!ids.length) return toast('Pas de caméra connectée');
+  ids.forEach(id => withCam(id, () => withTargets([id], () => recallCore(p))));
+  toast(`« ${p.name} » → ${ids.map(camLabel).join(', ')}`);
+  log(`Preset appliqué : ${p.name} → ${ids.map(camLabel).join(', ')}`);
+}
+function recallCore(p) {
+  if (!connected()) return;
+  const d = p.data, nn = v => v != null;
+  if (d.expo) {
+    nn(d.expo.iso) && CMD.iso(d.expo.iso);
+    if (d.expo.shutterMode === 'speed') nn(d.expo.speed) && CMD.speed(d.expo.speed); else nn(d.expo.angle) && CMD.angle(d.expo.angle);
+    nn(d.expo.fnum) && CMD.fstop(d.expo.fnum);
+  }
+  if (d.wb && nn(d.wb.k)) CMD.wb(d.wb.k, d.wb.tint ?? 0);
+  if (d.format) {
+    nn(d.format.codec) && CMD.codec(d.format.codec, d.format.variant ?? 0);
+    nn(d.format.dr) && CMD.dynRange(d.format.dr);
+    if (nn(d.format.fps) && (d.format.fps !== S.fps || d.format.fpsM !== S.fpsM)) CMD.fps(d.format.fps, d.format.fpsM);
+  }
+  if (d.display) {
+    nn(d.display.tools) && CMD.tools(d.display.tools);
+    nn(d.display.zebra) && CMD.zebraLvl(d.display.zebra);
+    nn(d.display.peak) && CMD.peakLvl(d.display.peak);
+    nn(d.display.lut) && CMD.lut(d.display.lut, d.display.lutOn);
+  }
+  if (d.color) {
+    const c = d.color;
+    CMD.cc(0,c.lift); CMD.cc(1,c.gamma); CMD.cc(2,c.gain); CMD.cc(3,c.offset);
+    CMD.cc(4,c.contrast); CMD.cc(5,[c.lumaMix]); CMD.cc(6,c.hueSat);
+  }
+  if (d.audio) {
+    const a = d.audio;
+    nn(a.input) && CMD.audioIn(a.input);
+    nn(a.mic) && CMD.audio(0,[a.mic]); nn(a.hp) && CMD.audio(1,[a.hp]); nn(a.spk) && CMD.audio(3,[a.spk]);
+    a.levels?.[0] != null && CMD.audio(5, a.levels.map(x => x ?? 0.5));
+    nn(a.phantom) && CMD.phantom(a.phantom);
+  }
+}
+function exportPresets() {
+  const blob = new Blob([JSON.stringify({app:'pocket-monitor', version:1, presets:P.presets, fkeys:P.fkeys}, null, 2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pocket-presets.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$id('importFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    const incoming = (j.presets || []).filter(p => p.id && p.data);
+    const known = new Set(P.presets.map(p => p.id));
+    P.presets.push(...incoming.filter(p => !known.has(p.id)));
+    if (Array.isArray(j.fkeys) && confirm('Importer aussi l\'affectation des touches de fonction ?')) P.fkeys = j.fkeys;
+    saveP(); render(); toast(`${incoming.length} preset(s) importé(s)`);
+  } catch(err) { toast('Fichier invalide'); }
+  e.target.value = '';
+};
+
+/* =====================================================================
+   RENDU
+   ===================================================================== */
+function $id(id){ return document.getElementById(id); }
+const $ = $id;
+const fmt = {
+  fps: () => S.fps==null ? '--' : (S.fpsM ? ({24:'23.98',30:'29.97',60:'59.94',48:'47.95'}[S.fps] ?? S.fps) : S.fps),
+  shutter: () => S.shutterMode==='angle' ? (S.shutterAngle==null?'--':S.shutterAngle+'°') : (S.shutterSpeed==null?'--':'1/'+S.shutterSpeed),
+  iris: () => S.fnum==null ? '--' : 'f' + (S.fnum<10 ? S.fnum.toFixed(1) : Math.round(S.fnum)),
+  codec: () => { const c = CODECS[S.codec]; return c ? `${c[0]} ${c[1][S.codecVariant] ?? ''}` : '--'; },
+  res: () => {
+    if (!S.width) return 'Résolution';
+    const map = {'4096x2160':'4K DCI','3840x2160':'Ultra HD','2688x1512':'2.6K 16:9','2880x2160':'2.8K Ana','1920x1080':'HD','4096x1720':'4K 2.4:1'};
+    return map[`${S.width}x${S.height}`] ?? `${S.width}×${S.height}`;
+  },
+  pct: v => v==null ? '--' : Math.round(v*100)+'%',
+};
+function renderTc(){ $('tcTxt').textContent = S.tc; $('tc').classList.toggle('rec', S.recording); }
+
+let rTimer = null;
+function render(){ if (!rTimer) rTimer = setTimeout(() => { rTimer = null; doRender(); }, 16); }
+function doRender() {
+  $('vFps').textContent = fmt.fps();
+  $('lShutter').textContent = S.shutterMode==='angle' ? 'Shutter' : 'Speed';
+  $('vShutter').textContent = fmt.shutter();
+  $('vIris').textContent = fmt.iris();
+  $('vCodec').textContent = fmt.codec();
+  $('lRes').textContent = fmt.res();
+  $('vLut').textContent = S.lut==null ? '--' : (S.lutOn ? LUTS[S.lut] ?? S.lut : 'Off');
+  $('vIso').textContent = S.iso ?? '--';
+  $('vWb').textContent = S.wbK==null ? '--' : S.wbK + 'K';
+  $('vTint').textContent = S.tint==null ? '--' : (S.tint>0?'+':'') + S.tint;
+  $('vFocus').textContent = fmt.pct(S.focus);
+  $('vDr').textContent = S.dynRange==null ? '--' : DR[S.dynRange] ?? S.dynRange;
+  $('vTools').innerHTML = [['ZEB',1],['PEAK',2],['FC',4]].map(([n,b]) => `<span class="badge ${S.tools&b?'on':''}">${n}</span>`).join('');
+  const nt = targets().length;
+  $('vName').textContent = CAMS.size > 1 ? `${camLabel(ACTIVE)}${nt > 1 ? `  → ${nt} cam.` : ''}` : S.name;
+  $('recDot').classList.toggle('rec', S.recording);
+  $('recBtn').classList.toggle('rec', S.recording);
+  $('view').classList.toggle('rec', S.recording);
+  const lt = {off:'Déconnecté', connecting:'Connexion…', retry:'Reconnexion…', pairing:'Appairage…', ok: S.demo ? 'Démo' : 'Connecté'}[S.link];
+  $('conn').textContent = lt;
+  $('conn').className = S.link==='ok' ? 'ok' : S.link==='off' ? '' : 'retry';
+  $('btnConnect').classList.toggle('on', S.link==='ok');
+  renderTc(); renderDash(); renderFkeys(); renderStrip();
+  if (openPicker) buildPicker(openPicker, true);
+  if ($('menu').classList.contains('open')) buildPane(curTab, true);
+}
+function renderFkeys() {
+  const col = $('fcol');
+  if (col.childElementCount !== P.fkeys.length) {
+    col.innerHTML = '';
+    P.fkeys.forEach((_, i) => {
+      const b = document.createElement('button');
+      b.className = 'sbtn fkey'; b.dataset.i = i;
+      b.title = `F${i+1} — appui long ou clic droit pour assigner`;
+      let t, long = false;
+      b.onpointerdown = () => { long = false; t = setTimeout(() => { long = true; showPicker('assign:'+i); }, 550); };
+      b.onpointerup = () => { clearTimeout(t); if (!long) runFkey(i); };
+      b.onpointerleave = () => clearTimeout(t);
+      b.oncontextmenu = e => { e.preventDefault(); clearTimeout(t); showPicker('assign:'+i); };
+      col.appendChild(b);
+    });
+  }
+  P.fkeys.forEach((id, i) => {
+    const a = getAction(id), b = col.children[i];
+    b.innerHTML = `<small>F${i+1}</small>${a.s}`;
+    b.classList.toggle('on', !!a.on?.());
+  });
+}
+function renderStrip() {
+  const el = $('camstrip');
+  const show = CAMS.size > 1 || ((RELAY || cam instanceof BleHub) && CAMS.size > 0);
+  el.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  const g = groupIds();
+  const chips = [...CAMS.values()].sort((a, b) => a.id - b.id).map(c => {
+    const s = c.state, lk = s.link === 'ok' ? 'ok' : s.link === 'off' ? 'off' : 'wait';
+    const sub = s.link === 'ok'
+      ? withCam(c.id, () => `ISO ${s.iso ?? '--'} · ${fmt.shutter()} · ${fmt.iris()} · ${s.wbK ?? '--'}K`)
+      : linkLabel(s.link);
+    return `<button class="chip${c.id === ACTIVE ? ' act' : ''}${g.includes(c.id) ? ' grp' : ''}${s.recording ? ' rec' : ''}" data-id="${c.id}">
+      <span class="ln" data-grp="${c.id}" title="Ajouter / retirer du groupe lié">${g.includes(c.id) ? '🔗' : '○'}</span>
+      <span class="cl"><b><i class="d ${lk}"></i>${esc(c.label)}</b><small>${esc(sub)}</small></span>
+      <span class="ctc" data-tc="${c.id}">${s.tc}</span></button>`;
+  }).join('');
+  const nLinked = g.filter(camOk).length;
+  el.innerHTML = chips + `<span class="sp"></span>
+    <button class="chipbtn${P.linked ? ' on' : ''}" data-x="link" title="Les réglages s'appliquent à toutes les caméras du groupe 🔗">🔗 Lier : ${P.linked ? nLinked + ' cam.' : 'off'}</button>
+    <button class="chipbtn" data-x="all">Tout lier</button>
+    ${cam instanceof BleHub ? '<button class="chipbtn" data-x="add">＋ Caméra</button>' : ''}
+    <button class="chipbtn recall${okIds().some(id => CAMS.get(id).state.recording) ? ' on' : ''}" data-x="rec">● REC toutes</button>`;
+}
+$id('camstrip').addEventListener('click', e => {
+  const grp = e.target.closest('[data-grp]');
+  if (grp) { e.stopPropagation(); return toggleGroup(+grp.dataset.grp); }
+  const x = e.target.closest('[data-x]')?.dataset.x;
+  if (x === 'link') return toggleP('linked');
+  if (x === 'all') { P.group = [...CAMS.keys()]; P.linked = true; saveP(); render(); return toast('Toutes les caméras sont liées'); }
+  if (x === 'rec') return recAll();
+  if (x === 'add') return connect(false);
+  const chip = e.target.closest('.chip');
+  if (chip) setActive(+chip.dataset.id);
+});
+
+function renderDash() {
+  const T = (pick, lab, val, sub='', on=false, wide=false) =>
+    `<button class="tile${on?' on':''}${wide?' wide':''}" ${pick ? `data-pick="${pick}"` : `data-act="${lab}"`}><span class="lab">${lab}</span><span class="val">${val}</span><span class="sub">${sub}</span></button>`;
+  const A = S.audio;
+  $('dash').innerHTML = [
+    T('iso', 'ISO', S.iso ?? '--', S.gainDb != null ? `${S.gainDb > 0 ? '+' : ''}${S.gainDb} dB` : ''),
+    T('shutter', S.shutterMode==='angle' ? 'Obturateur' : 'Vitesse', fmt.shutter(), S.autoExp ? 'Expo auto' : 'Manuel'),
+    T('iris', 'Iris', fmt.iris()),
+    T('wb', 'Balance', S.wbK==null ? '--' : S.wbK+'K', S.tint==null ? '' : `Tint ${(S.tint>0?'+':'') + S.tint}`),
+    T('fps', 'Cadence', fmt.fps(), S.rfFlags & 4 ? `Off speed ${S.sensorFps} i/s` : 'i/s'),
+    T('codec', 'Codec', fmt.codec(), fmt.res(), false, true),
+    T('focus', 'Focus', fmt.pct(S.focus), 'Toucher pour régler'),
+    T('dr', 'Plage dyn.', S.dynRange==null ? '--' : DR[S.dynRange]),
+    T('lut', 'LUT', S.lut==null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn),
+    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', S.zebraLevel != null ? Math.round(S.zebraLevel*100)+'%' : '', !!(S.tools & 1)),
+    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', '', !!(S.tools & 2)),
+    T('', 'False color', S.tools & 4 ? 'On' : 'Off', '', !!(S.tools & 4)),
+    T('', 'Audio', A.input==null ? '--' : AUDIO_IN[A.input], A.phantom ? '48V activé' : '', !!A.phantom, true),
+    T('', 'Slate', S.slate.scene ? `Sc ${S.slate.scene} · P${S.slate.take ?? '-'}` : (S.slate.take ? `Prise ${S.slate.take}` : '--'), S.slate.project || '', false, true),
+  ].join('');
+}
+$id('dash').addEventListener('click', e => {
+  const t = e.target.closest('.tile'); if (!t) return;
+  if (t.dataset.pick) return showPicker(t.dataset.pick);
+  ({Zebra: () => toggleTool(1), Peaking: () => toggleTool(2), 'False color': () => toggleTool(4),
+    Audio: () => openMenu('audio'), Slate: () => openMenu('slate')})[t.dataset.act]?.();
+});
+
+/* ---------- composants ---------- */
+function opts(list, isSel, label, onPick, wrap=false) {
+  const w = document.createElement('div'); w.className = 'opts' + (wrap ? ' wrap' : '');
+  list.forEach(x => {
+    const b = document.createElement('button');
+    b.className = 'opt' + (isSel(x) ? ' sel' : '');
+    b.textContent = label(x); b.onclick = () => onPick(x);
+    w.appendChild(b);
+  });
+  return w;
+}
+function slider(lab, min, max, stp, val, show, onInput) {
+  const r = document.createElement('div'); r.className = 'row';
+  const v0 = val ?? (min+max)/2;
+  r.innerHTML = `<label>${lab}</label><input type=range min=${min} max=${max} step=${stp} value=${v0}><output>${val==null?'--':show(val)}</output>`;
+  const inp = r.querySelector('input'), out = r.querySelector('output');
+  let t;
+  inp.oninput = () => { out.textContent = show(+inp.value); clearTimeout(t); t = setTimeout(() => onInput(+inp.value), 40); };
+  inp.onpointerdown = () => r.dataset.active = 1;
+  inp.ondblclick = () => { const d = +inp.dataset.def; if (!isNaN(d)) { inp.value = d; inp.oninput(); } };
+  return r;
+}
+document.addEventListener('pointerup', () => setTimeout(() => document.querySelectorAll('[data-active]').forEach(e => delete e.dataset.active), 300));
+function near(a, b, eps=0.05){ return a!=null && Math.abs(a-b) < eps; }
+function rowButtons(list) {
+  const r = document.createElement('div'); r.className = 'row';
+  list.forEach(([l, fn, cls]) => { const b = document.createElement('button'); b.className='big '+(cls||''); b.textContent=l; b.onclick=fn; r.append(b); });
+  return r;
+}
+function note(t){ const p = document.createElement('p'); p.className='note'; p.textContent=t; return p; }
+
+/* ---------- sélecteur rapide ---------- */
+let openPicker = null;
+function buildPicker(kind, refresh=false) {
+  const body = $('pkBody');
+  if (refresh && body.querySelector('[data-active]')) return;
+  const sc = body.querySelector('.opts')?.scrollLeft;
+  body.innerHTML = '';
+  const titles = {iso:'ISO', shutter:'Obturateur', iris:'Diaphragme', wb:'Balance des blancs', focus:'Mise au point',
+    fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
+  if (kind.startsWith('assign:')) {
+    const i = +kind.slice(7);
+    $('pkTitle').textContent = `Assigner F${i+1}`;
+    body.append(opts(allActionIds(), id => id === P.fkeys[i], id => getAction(id).l,
+      id => { P.fkeys[i] = id; saveP(); hidePicker(); render(); }, true));
+    return;
+  }
+  $('pkTitle').textContent = titles[kind];
+  switch (kind) {
+    case 'iso': body.append(opts(ISOS, v => v===S.iso, v => v, v => CMD.iso(v))); break;
+    case 'shutter': {
+      body.append(opts(['angle','speed'], m => m===S.shutterMode, m => m==='angle'?'Angle':'Vitesse', m => { S.shutterMode = m; render(); }));
+      const r = document.createElement('div'); r.style.marginTop = '8px';
+      r.append(S.shutterMode==='angle'
+        ? opts(ANGLES, v => near(S.shutterAngle, v), v => v+'°', v => CMD.angle(v))
+        : opts(SPEEDS, v => v===S.shutterSpeed, v => '1/'+v, v => CMD.speed(v)));
+      body.append(r); break;
+    }
+    case 'iris':
+      body.append(opts(FSTOPS, v => near(S.fnum, v, v*0.04), v => 'f'+v, v => CMD.fstop(v)));
+      body.append(rowButtons([['Iris auto (instantané)', () => CMD.autoIris()]])); break;
+    case 'wb':
+      body.append(opts(WB_PRESETS, ([,k]) => k===S.wbK, ([n,k]) => `${n} ${k}K`, ([,k]) => CMD.wb(k)));
+      body.append(slider('Kelvin', 2500, 10000, 50, S.wbK, v => v+'K', v => CMD.wb(v)));
+      body.append(slider('Tint', -50, 50, 1, S.tint, v => (v>0?'+':'')+v, v => CMD.wb(S.wbK ?? 5600, v)));
+      body.append(rowButtons([['Balance auto (AWB)', () => CMD.autoWb()]])); break;
+    case 'focus':
+      body.append(slider('Focus', 0, 1, 0.005, S.focus, v => Math.round(v*100)+'%', v => CMD.focus(v)));
+      body.append(rowButtons([['Autofocus (instantané)', () => CMD.af()], ['◀ Proche', () => ACTIONS.focusNear.run()], ['Lointain ▶', () => ACTIONS.focusFar.run()]]));
+      body.append(note('Nécessite un objectif à commande électronique (MFT avec AF).')); break;
+    case 'fps':
+      body.append(opts(FPS_LIST, ([,f,m]) => f===S.fps && m===S.fpsM, ([l]) => l, ([,f,m]) => CMD.fps(f, m))); break;
+    case 'codec':
+      body.append(opts(CODEC_CHOICES, ([c,v]) => c===S.codec && v===S.codecVariant, ([c,v]) => `${CODECS[c][0]} ${CODECS[c][1][v]}`, ([c,v]) => CMD.codec(c,v))); break;
+    case 'dr':
+      body.append(opts([0,1,2], v => v===S.dynRange, v => DR[v], v => CMD.dynRange(v))); break;
+    case 'lut':
+      body.append(opts([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))); break;
+    case 'presets':
+      if (!P.presets.length) body.append(note('Aucun preset. Enregistrez l\'état actuel de la caméra pour créer le premier.'));
+      else {
+        if (CAMS.size > 1) body.append(note('Appliquer à : ' + (targets().map(camLabel).join(', ') || '—') + (P.linked ? ' (groupe lié)' : ' (caméra active)')));
+        body.append(opts(P.presets, () => false, p => p.name, p => recallPreset(p), true));
+        if (CAMS.size > 1) { body.append(note('Ou à toutes les caméras :')); body.append(opts(P.presets, () => false, p => '⇉ ' + p.name, p => recallPreset(p, okIds()), true)); }
+      }
+      body.append(rowButtons([
+        ['＋ Enregistrer l\'état actuel', () => savePreset(prompt('Nom du preset :', `Preset ${P.presets.length+1}`) ?? undefined, Object.keys(GROUPS)), 'primary'],
+        ['Gérer…', () => { hidePicker(); openMenu('presets'); }],
+      ])); break;
+  }
+  const o = body.querySelector('.opts:not(.wrap)');
+  if (o && sc) o.scrollLeft = sc;
+  else if (o && !refresh) o.querySelector('.sel')?.scrollIntoView({inline:'center', block:'nearest'});
+}
+function showPicker(kind) {
+  if (openPicker === kind) return hidePicker();
+  openPicker = kind; buildPicker(kind); $('picker').classList.add('open');
+}
+function hidePicker(){ openPicker = null; $('picker').classList.remove('open'); }
+
+/* ---------- menu ---------- */
+let curTab = 'record';
+function seg(list, isSel, label, onPick) {
+  const w = document.createElement('div'); w.className = 'seg';
+  list.forEach(x => { const b = document.createElement('button'); b.textContent = label(x); if (isSel(x)) b.className='sel'; b.onclick = () => onPick(x); w.append(b); });
+  return w;
+}
+const onoff = (cur, fn) => seg([true,false], v => v===!!cur, v => v?'On':'Off', v => v!==!!cur && fn(v));
+function item(label, control) {
+  const d = document.createElement('div'); d.className = 'item';
+  const s = document.createElement('span'); s.textContent = label; d.append(s, control); return d;
+}
+function sliderItem(label, min, max, stp, val, show, fn, def) {
+  const r = slider('', min, max, stp, val, show, fn);
+  r.querySelector('label').remove();
+  if (def != null) { r.querySelector('input').dataset.def = def; r.title = 'Double-clic : valeur par défaut'; }
+  return item(label, r);
+}
+function paneBusy() {
+  const pane = $('pane'), a = document.activeElement;
+  return pane.querySelector('[data-active]') || (a && pane.contains(a) && /^(SELECT|TEXTAREA)$/.test(a.tagName)) || (a && a.classList?.contains('txt'));
+}
+function buildPane(tab, refresh=false) {
+  const p = $('pane');
+  if (refresh && paneBusy()) return;
+  const st = p.scrollTop;
+  p.innerHTML = '';
+  const h = t => { const e = document.createElement('h2'); e.textContent = t; e.style.marginTop = p.childElementCount ? '26px' : '0'; p.append(e); };
+  const flag = bit => !!(S.tools & bit);
+  const pct = v => Math.round(v*100)+'%';
+  const f2 = v => (v>0?'+':'') + v.toFixed(2);
+
+  const camOnly = (label, hint='Sur la caméra uniquement') => {
+    const d = item(label, Object.assign(document.createElement('span'), {className:'na-tag', textContent:hint}));
+    d.classList.add('na'); d.title = 'Ce réglage n\'est pas exposé par le protocole Bluetooth de Blackmagic'; p.append(d);
+  };
+  const textItem = (label, val, fn, type='text') => {
+    const i = Object.assign(document.createElement('input'), {className:'txt', type, value: val ?? ''});
+    i.onchange = () => { fn(type === 'number' ? +i.value : i.value); i.blur(); };
+    i.onkeydown = e => { if (e.key === 'Enter') i.onchange(); };
+    p.append(item(label, i));
+  };
+  const span = t => Object.assign(document.createElement('span'), {textContent: t});
+
+  if (tab === 'multicam') {
+    h(`Caméras (${CAMS.size})`);
+    if (!CAMS.size) p.append(note('Aucune caméra. Avec l\'app Mac, toutes les caméras Blackmagic à portée sont connectées automatiquement.'));
+    else {
+      const cols = [
+        ['ISO', () => S.iso], ['Obturateur', () => fmt.shutter()], ['Iris', () => fmt.iris()],
+        ['Balance', () => S.wbK == null ? null : `${S.wbK}K ${S.tint ? (S.tint > 0 ? '+' : '') + S.tint : ''}`.trim()],
+        ['Codec', () => fmt.codec()], ['Cadence', () => fmt.fps()], ['Format', () => fmt.res()],
+        ['Plage', () => S.dynRange == null ? null : DR[S.dynRange]], ['LUT', () => S.lutOn ? LUTS[S.lut] : 'Off'],
+      ];
+      const ref = withCam(ACTIVE, () => cols.map(([, f]) => String(f() ?? '--')));
+      const g = groupIds();
+      const rows = [...CAMS.values()].sort((a, b) => a.id - b.id).map(c => {
+        const vals = withCam(c.id, () => cols.map(([, f]) => String(f() ?? '--')));
+        const st = c.state;
+        return `<tr data-row="${c.id}" class="${c.id === ACTIVE ? 'act' : ''}">
+          <td><span data-grp="${c.id}" style="cursor:pointer">${g.includes(c.id) ? '🔗' : '○'}</span></td>
+          <td><b>${esc(c.label)}</b></td><td>${linkLabel(st.link)}</td>
+          ${vals.map((v, i) => `<td class="${st.link === 'ok' && c.id !== ACTIVE && v !== ref[i] ? 'diff' : ''}">${esc(v)}</td>`).join('')}
+          <td data-tc="${c.id}">${st.tc}</td><td class="rec">${st.recording ? '● REC' : ''}</td></tr>`;
+      }).join('');
+      const t = document.createElement('div');
+      t.style.overflowX = 'auto';
+      t.innerHTML = `<table class="mtable"><thead><tr><th>Lien</th><th>Caméra</th><th>État</th>${cols.map(([n]) => `<th>${n}</th>`).join('')}<th>TC</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      t.onclick = e => {
+        const gr = e.target.closest('[data-grp]'); if (gr) return toggleGroup(+gr.dataset.grp);
+        const r = e.target.closest('[data-row]'); if (r) setActive(+r.dataset.row);
+      };
+      p.append(t);
+      p.append(note(`En orange : les valeurs qui diffèrent de la caméra active (${camLabel(ACTIVE)}). Touchez une ligne pour l'afficher, ○/🔗 pour l'ajouter au groupe lié.`));
+    }
+    h('Commandes groupées');
+    p.append(item('Commandes liées', onoff(P.linked, v => { P.linked = v; saveP(); render(); })));
+    p.append(item('Groupe lié', seg([...CAMS.keys()].sort((a, b) => a - b), id => groupIds().includes(id), camLabel, id => toggleGroup(id))));
+    p.append(note('Commandes liées activées : chaque réglage fait sur la caméra active (si elle est dans le groupe) est envoyé à toutes les caméras du groupe.'));
+    p.append(item('Enregistrement', seg(['rec','stop'], () => false, v => v === 'rec' ? '● REC toutes' : '■ Stop toutes',
+      v => withTargets(okIds(), () => CMD.record(v === 'rec')))));
+    h(`Aligner sur ${camLabel(ACTIVE)}`);
+    const chk = document.createElement('div'); chk.className = 'chk';
+    const sel = new Set(P.alignGroups || ['expo','wb','format']);
+    Object.entries(GROUPS).forEach(([k, l]) => {
+      const lab = document.createElement('label');
+      const c = Object.assign(document.createElement('input'), {type:'checkbox', checked: sel.has(k)});
+      c.onchange = () => { c.checked ? sel.add(k) : sel.delete(k); P.alignGroups = [...sel]; saveP(); };
+      lab.append(c, l); chk.append(lab);
+    });
+    p.append(chk);
+    const others = scope => (scope === 'all' ? okIds() : groupIds().filter(camOk)).filter(id => id !== ACTIVE);
+    p.append(rowButtons([
+      ['Copier vers le groupe lié', () => { const ids = others('grp'); if (!ids.length) return toast('Aucune autre caméra connectée dans le groupe');
+        recallPreset({name: `réglages de ${camLabel(ACTIVE)}`, data: snapshot([...sel])}, ids); }],
+      ['Copier vers toutes', () => { const ids = others('all'); if (!ids.length) return toast('Aucune autre caméra connectée');
+        recallPreset({name: `réglages de ${camLabel(ACTIVE)}`, data: snapshot([...sel])}, ids); }, 'primary'],
+    ]));
+    h('Outils');
+    p.append(item('Horloge', Object.assign(document.createElement('button'), {className:'big', textContent:'Synchroniser toutes les caméras',
+      onclick: () => withTargets(okIds(), () => CMD.clock())})));
+    p.append(item('Slate : ID caméra', Object.assign(document.createElement('button'), {className:'big', textContent:'Utiliser le nom de chaque caméra',
+      onclick: () => { okIds().forEach(id => withCam(id, () => withTargets([id], () => CMD.str(12,5,camLabel(id))))); toast('ID caméra écrits'); }})));
+    h('Noms des caméras');
+    [...CAMS.keys()].sort((a, b) => a - b).forEach(id => textItem(`Caméra #${id}`, camLabel(id), v => renameCam(id, v)));
+    if (RELAY || cam instanceof BleHub) p.append(rowButtons([[RELAY ? 'Rechercher d\'autres caméras' : '+ Ajouter une caméra', () => RELAY ? cam.cmd('scan') : connect(false)],
+      ...[...CAMS.values()].filter(c => c.state.link === 'pairing' || c.state.link === 'retry').map(c => [`Appairer ${c.label}`, () => cam.cmd('pair', {cam: c.id})])]));
+    p.append(note('Le Mac gère plusieurs caméras Bluetooth à la fois. Au-delà de 4 à 6 caméras, la liaison peut ralentir selon le Mac. Chaque caméra demande son propre code PIN au premier appairage.'));
+  }
+  if (tab === 'record') {
+    h('Codec et qualité');
+    p.append(item('Codec', seg([3,2], c => c===S.codec, c => CODECS[c][0], c => CMD.codec(c, c===3 ? 3 : 1))));
+    if (CODECS[S.codec]) {
+      const variants = S.codec===3 ? [2,3,4,5,0,7,8,1] : S.codec===2 ? [0,1,2,3] : [];
+      p.append(item('Qualité', seg(variants, v => v===S.codecVariant, v => CODECS[S.codec][1][v], v => CMD.codec(S.codec, v))));
+    }
+    h('Résolution et cadence');
+    const win = !!(S.rfFlags & 0x10);
+    p.append(item('Résolution', seg(RESOLUTIONS, r => r.w===S.width && r.h===S.height && (r.win==null || r.win===win), r => r.l,
+      r => CMD.recFormat({w:r.w, h:r.h, flags: r.win==null ? S.rfFlags : (r.win ? S.rfFlags|0x10 : S.rfFlags & ~0x10)}))));
+    p.append(item('Cadence projet', seg(FPS_LIST, ([,f,m]) => f===S.fps && m===S.fpsM, ([l]) => l, ([,f,m]) => CMD.fps(f,m))));
+    const off = !!(S.rfFlags & 0x04);
+    p.append(item('Off speed (ralenti / accéléré)', onoff(off, on => CMD.recFormat({sensor: on ? (S.sensorFps ?? S.fps) : S.fps, flags: on ? S.rfFlags|0x04 : S.rfFlags & ~0x04}))));
+    if (off) p.append(item('Cadence capteur', seg(SENSOR_FPS, v => v===S.sensorFps, v => v, v => CMD.recFormat({sensor:v, flags:S.rfFlags|0x04}))));
+    h('Image');
+    p.append(item('Plage dynamique', seg([0,1,2], v => v===S.dynRange, v => DR[v], v => CMD.dynRange(v))));
+    p.append(item('Netteté (détail)', seg([0,1,2,3], v => v===S.sharp, v => ['Off','Bas','Moyen','Haut'][v], v => CMD.sharp(v))));
+    h('Supports et transport');
+    const mname = m => m==null || m<0 ? '—' : (MEDIA[m] ?? '#'+m);
+    p.append(item('Supports actifs', span(`Slot 1 : ${mname(S.media[0])} · Slot 2 : ${mname(S.media[1])}`)));
+    p.append(item('Enregistrement', seg([true,false], v => v===S.recording, v => v?'● REC':'■ Stop', v => CMD.record(v))));
+    p.append(item('Affichage du timecode', seg([0,1], v => v===S.tcSource, v => ['Durée du clip','Timecode'][v], v => CMD.tcSource(v))));
+    camOnly('Support d\'enregistrement préféré');
+    camOnly('Formatage des cartes / disque USB');
+    h('Lecture');
+    p.append(item('Mode', seg([0,1], v => v===S.transportMode, v => ['Aperçu (caméra)','Lecture'][v], v => CMD.transport(v, v ? 1 : 0))));
+    p.append(item('Vitesse de lecture', seg([-2,-1,0,1,2], v => S.transportMode===1 && v===S.playSpeed, v => v===0 ? '❚❚' : (v<0 ? '◀'.repeat(-v) : '▶'.repeat(v)), v => CMD.transport(1, v))));
+    p.append(item('Clip', seg([0,1], () => false, v => v ? 'Suivant ⏭' : '⏮ Précédent', v => CMD.clip(v===1))));
+    p.append(item('Lire en boucle', onoff(S.transportFlags & 1, on => CMD.transport(S.transportMode === 1 ? 1 : 0, S.playSpeed, (S.transportFlags & 0x03) ^ 1))));
+    h('Photo');
+    p.append(item('Capture d\'image fixe', Object.assign(document.createElement('button'), {className:'big', textContent:'📷 Capturer', onclick: () => CMD.still()})));
+    p.append(item('Timelapse', span(S.transportFlags & 0x80 ? 'Enregistrement timelapse en cours' : '—')));
+    camOnly('Réglage de l\'intervalle timelapse');
+    camOnly('Nom et préfixe des fichiers');
+    camOnly('Mode timecode (Free run / Rec run)');
+    p.append(note('Les combinaisons résolution / cadence / off speed invalides sont refusées par la caméra : la valeur affichée est toujours celle renvoyée par la caméra.'));
+  }
+  if (tab === 'setup') {
+    h('Date, heure et langue');
+    p.append(item('Horloge de la caméra', Object.assign(document.createElement('button'), {className:'big', textContent:'Synchroniser avec cet appareil', onclick: () => CMD.clock()})));
+    p.append(item('Fuseau horaire', span(S.tz==null ? '—' : `UTC${S.tz>=0?'+':'−'}${Math.floor(Math.abs(S.tz)/60)}:${String(Math.abs(S.tz)%60).padStart(2,'0')}`)));
+    p.append(item('Langue', seg(LANGS, ([c]) => c===S.lang, ([,l]) => l, ([c]) => CMD.str(7,1,c))));
+    h('Exposition et objectif');
+    p.append(item('Exposition auto', seg([0,1,2,3,4], v => v===S.autoExp, v => ['Manuel','Iris','Shutter','Iris+Shutter','Shutter+Iris'][v], v => CMD.autoExp(v))));
+    p.append(item('Stabilisation de l\'objectif', onoff(S.ois, v => CMD.ois(v))));
+    p.append(item('Affichage obturateur (ce moniteur)', seg(['angle','speed'], m => m===S.shutterMode, m => m==='angle'?'Angle':'Vitesse', m => { S.shutterMode=m; render(); })));
+    h('Écran et voyants');
+    p.append(sliderItem('Luminosité écran caméra', 0, 1, 0.01, S.lcd, pct, v => CMD.lcd(v)));
+    p.append(sliderItem('Luminosité tally', 0, 1, 0.01, S.tally, pct, v => CMD.tally(v)));
+    h('Informations');
+    p.append(item('Caméra', span(S.name)));
+    p.append(item('Version du protocole Bluetooth', span(S.protocol ?? '—')));
+    camOnly('Bluetooth on/off et appareils appairés');
+    camOnly('Affectation des boutons F1 / F2 / F3', 'Voir « Touches de fonction »');
+    camOnly('Obturateur anti-scintillement');
+    camOnly('Comportement du bouton IRIS');
+    camOnly('Réinitialisation des réglages');
+    camOnly('Mise à jour du firmware', 'Blackmagic Camera Setup');
+    if (connected() || RELAY) {
+      h('Alimentation');
+      const pw = document.createElement('div'); pw.className = 'seg';
+      if (RELAY) pw.append(Object.assign(document.createElement('button'), {textContent:'Allumer', onclick: () => cam.cmd('poweron', {cam: ACTIVE})}));
+      pw.append(Object.assign(document.createElement('button'), {textContent:'Éteindre', onclick: () => confirm('Éteindre la caméra ?') && cam.powerOff()}));
+      p.append(item('Caméra', pw));
+    }
+  }
+  if (tab === 'luts') {
+    h('LUT d\'affichage');
+    p.append(item('LUT', seg([1,2,3], v => v===S.lut, v => LUTS[v], v => CMD.lut(v, true))));
+    p.append(item('Appliquer à l\'affichage', onoff(S.lutOn, on => CMD.lut(S.lut || 2, on))));
+    camOnly('Importer une LUT 3D (.cube)');
+    camOnly('Supprimer / renommer les LUT');
+    camOnly('Intégrer la LUT dans les fichiers BRAW');
+    camOnly('LUT différente par sortie (écran / HDMI)');
+    p.append(note('« Personnalisée » utilise la LUT 3D actuellement sélectionnée sur la caméra.'));
+  }
+  if (tab === 'slate') {
+    const L = S.slate;
+    h('Clip');
+    textItem('Bobine (reel, 0–999)', L.reel, v => CMD.i16(12,0,[Math.max(0, Math.min(999, v|0))]), 'number');
+    textItem('Scène', L.scene, v => CMD.str(12,2,v));
+    p.append(item('Prise', seg([-1, +1], () => false, d => d<0 ? '− 1' : '+ 1', d => CMD.i8(12,3,[Math.max(1, (L.take||1)+d), L.takeTag ?? -1]))));
+    p.lastChild.firstChild.textContent = `Prise : ${L.take ?? '—'}`;
+    p.append(item('Type de prise', seg([-1,0,1,2], v => v===L.takeTag, v => ['—','PU','VFX','SER'][v+1], v => CMD.i8(12,3,[L.take||1, v]))));
+    p.append(item('Bonne prise', onoff(L.good, v => CMD.bool(12,4,v))));
+    p.append(item('Type de plan', seg(SHOT_TAGS, ([t]) => t===L.sceneTag, ([,l]) => l, ([t]) => CMD.scene12_1(t, L.intExt ?? 0, L.dayNight ?? 1))));
+    p.append(item('Intérieur / extérieur', seg([1,0], v => v===L.intExt, v => v?'Intérieur':'Extérieur', v => CMD.scene12_1(L.sceneTag ?? -1, v, L.dayNight ?? 1))));
+    p.append(item('Jour / nuit', seg([1,0], v => v===L.dayNight, v => v?'Jour':'Nuit', v => CMD.scene12_1(L.sceneTag ?? -1, L.intExt ?? 0, v))));
+    p.append(item('Slate pour', seg([0,1], v => v===L.slateMode, v => ['Enregistrement','Lecture'][v], v => CMD.i8(12,14,[v]))));
+    h('Projet');
+    textItem('Nom du projet', L.project, v => CMD.str(12,8,v));
+    textItem('Réalisateur', L.director, v => CMD.str(12,7,v));
+    textItem('ID caméra', L.camId, v => CMD.str(12,5,v));
+    textItem('Opérateur', L.operator, v => CMD.str(12,6,v));
+    h('Objectif');
+    textItem('Type d\'objectif', L.lensType, v => CMD.str(12,9,v));
+    textItem('Focale', L.focal, v => CMD.str(12,11,v));
+    textItem('Filtre', L.filter, v => CMD.str(12,13,v));
+    textItem('Ouverture (texte)', L.lensIris, v => CMD.str(12,10,v));
+    textItem('Distance de mise au point', L.distance, v => CMD.str(12,12,v));
+    p.append(note('Ces métadonnées sont écrites dans les prochains clips. Validez chaque champ avec Entrée.'));
+  }
+  if (tab === 'image') {
+    h('Exposition');
+    p.append(item('Exposition auto', seg([0,1,2,3,4], v => v===S.autoExp, v => ['Manuel','Iris','Shutter','Iris+Shutter','Shutter+Iris'][v], v => CMD.autoExp(v))));
+    p.append(item('ISO', seg(ISOS, v => v===S.iso, v => v, v => CMD.iso(v))));
+    p.append(item('Mode obturateur', seg(['angle','speed'], m => m===S.shutterMode, m => m==='angle'?'Angle':'Vitesse', m => { S.shutterMode=m; render(); })));
+    p.append(S.shutterMode==='angle'
+      ? item('Angle', seg(ANGLES, v => near(S.shutterAngle,v), v => v+'°', v => CMD.angle(v)))
+      : item('Vitesse', seg(SPEEDS, v => v===S.shutterSpeed, v => '1/'+v, v => CMD.speed(v))));
+    p.append(item('Iris', seg(FSTOPS, v => near(S.fnum, v, v*0.04), v => 'f'+v, v => CMD.fstop(v))));
+    h('Balance des blancs');
+    p.append(item('Préréglage', seg(WB_PRESETS, ([,k]) => k===S.wbK, ([n,k]) => `${n} ${k}K`, ([,k]) => CMD.wb(k))));
+    p.append(sliderItem('Kelvin', 2500, 10000, 50, S.wbK, v => v+'K', v => CMD.wb(v), 5600));
+    p.append(sliderItem('Tint', -50, 50, 1, S.tint, v => (v>0?'+':'')+v, v => CMD.wb(S.wbK ?? 5600, v), 0));
+    h('Objectif');
+    p.append(sliderItem('Focus', 0, 1, 0.005, S.focus, pct, v => CMD.focus(v)));
+    p.append(sliderItem('Zoom (objectif motorisé)', 0, 1, 0.005, S.zoom, pct, v => CMD.zoomTo(v)));
+    const zr = document.createElement('div'); zr.className = 'seg';
+    [['◀◀ Grand-angle', -1], ['◀ lent', -0.3], ['lent ▶', 0.3], ['Télé ▶▶', 1]].forEach(([l, v]) => {
+      const b = document.createElement('button'); b.textContent = l;
+      b.onpointerdown = () => CMD.zoomRun(v);
+      b.onpointerup = b.onpointerleave = () => CMD.zoomRun(0);
+      zr.append(b);
+    });
+    p.append(item('Zoom continu (maintenir)', zr));
+    p.append(note('Le zoom n\'agit qu\'avec un objectif à zoom motorisé compatible.'));
+  }
+  if (tab === 'color') {
+    const C = S.cc;
+    const wheel = (name, param, key, min, max, def) => {
+      h(name);
+      ['Rouge','Vert','Bleu','Luma'].forEach((lab, i) => p.append(sliderItem(lab, min, max, 0.01, C[key][i], f2,
+        v => { const a = C[key].slice(); a[i] = v; CMD.cc(param, a); }, def)));
+      p.append(sliderItem('Maître (RVB)', min, max, 0.01, C[key][0], f2,
+        v => CMD.cc(param, [v, v, v, C[key][3]]), def));
+    };
+    wheel('Lift (noirs)', 0, 'lift', -1, 1, 0);
+    wheel('Gamma (tons moyens)', 1, 'gamma', -1, 1, 0);
+    wheel('Gain (hautes lumières)', 2, 'gain', 0, 4, 1);
+    wheel('Offset', 3, 'offset', -1, 1, 0);
+    h('Global');
+    p.append(sliderItem('Contraste', 0, 2, 0.01, C.contrast[1], v => v.toFixed(2), v => CMD.cc(4, [C.contrast[0], v]), 1));
+    p.append(sliderItem('Pivot', 0, 1, 0.01, C.contrast[0], v => v.toFixed(2), v => CMD.cc(4, [v, C.contrast[1]]), 0.5));
+    p.append(sliderItem('Saturation', 0, 2, 0.01, C.hueSat[1], v => v.toFixed(2), v => CMD.cc(6, [C.hueSat[0], v]), 1));
+    p.append(sliderItem('Teinte', -1, 1, 0.01, C.hueSat[0], v => Math.round(v*180)+'°', v => CMD.cc(6, [v, C.hueSat[1]]), 0));
+    p.append(sliderItem('Luma mix', 0, 1, 0.01, C.lumaMix, pct, v => CMD.cc(5, [v]), 1));
+    p.append(rowButtons([['Réinitialiser la correction couleur', () => confirm('Remettre toute la correction couleur à zéro ?') && CMD.ccReset(), 'danger']]));
+    p.append(note('Double-clic sur un curseur : valeur neutre. La correction s\'applique au rendu caméra (fichiers vidéo / ProRes, et métadonnées en BRAW).'));
+  }
+  if (tab === 'audio') {
+    const A = S.audio;
+    h('Entrée');
+    p.append(item('Source', seg([0,1,2,3], v => v===A.input, v => AUDIO_IN[v], v => CMD.audioIn(v))));
+    p.append(sliderItem('Niveau canal 1', 0, 1, 0.01, A.levels[0], pct, v => CMD.audio(5, [v, A.levels[1] ?? 0.5]), 0.5));
+    p.append(sliderItem('Niveau canal 2', 0, 1, 0.01, A.levels[1], pct, v => CMD.audio(5, [A.levels[0] ?? 0.5, v]), 0.5));
+    p.append(sliderItem('Niveau micro', 0, 1, 0.01, A.mic, pct, v => CMD.audio(0, [v]), 0.5));
+    p.append(item('Alimentation fantôme 48V', onoff(A.phantom, v => CMD.phantom(v))));
+    h('Écoute');
+    p.append(sliderItem('Casque', 0, 1, 0.01, A.hp, pct, v => CMD.audio(1, [v])));
+    p.append(sliderItem('Haut-parleur', 0, 1, 0.01, A.spk, pct, v => CMD.audio(3, [v])));
+    camOnly('Filtre coupe-bas');
+    camOnly('Atténuation (pad) par canal');
+    camOnly('Source du canal 2 identique au canal 1');
+    camOnly('Type de vumètres (VU / PPM)');
+    p.append(note('Attention : n\'activez le 48V qu\'avec un micro qui le nécessite.'));
+  }
+  if (tab === 'monitor') {
+    h('Outils caméra (écran / HDMI de la caméra)');
+    p.append(item('Zebra', onoff(flag(1), () => toggleTool(1))));
+    p.append(item('Niveau zebra', seg([0.75,0.8,0.85,0.9,0.95,1], v => near(S.zebraLevel, v, .02), pct, v => CMD.zebraLvl(v))));
+    p.append(item('Focus assist (peaking)', onoff(flag(2), () => toggleTool(2))));
+    p.append(item('Niveau peaking', seg([0.25,0.5,0.75,1], v => near(S.peakLevel, v, .05), v => ['Bas','Moyen','Haut','Max'][[0.25,0.5,0.75,1].indexOf(v)], v => CMD.peakLvl(v))));
+    p.append(item('Méthode focus assist', seg([0,1], v => v===S.focusMethod, v => ['Peaking','Lignes colorées'][v], v => CMD.focusAssist(v, S.focusColor ?? 0))));
+    p.append(item('Couleur focus assist', seg([0,1,2,3,4], v => v===S.focusColor, v => FA_COLORS[v], v => CMD.focusAssist(S.focusMethod ?? 0, v))));
+    p.append(item('False color', onoff(flag(4), () => toggleTool(4))));
+    h('Repères, grille et zone de sécurité (sortie caméra)');
+    const ov = S.overlay || [0,100,0,0];
+    const setOv = (i, v) => { const o = ov.slice(); o[i] = v; CMD.overlay(o); };
+    p.append(item('Repères de cadre', seg(FG_STYLES.map((_,i) => i), i => i===ov[0], i => FG_STYLES[i], i => setOv(0, i))));
+    p.append(item('Opacité des repères', seg([25,50,75,100], v => v===ov[1], v => v+'%', v => setOv(1, v))));
+    p.append(item('Zone de sécurité', seg([0,80,90,95], v => v===ov[2], v => v ? v+'%' : 'Off', v => setOv(2, v))));
+    [['Grille des tiers',1],['Croix centrale',2],['Point central',4],['Horizon',8]].forEach(([l,b]) =>
+      p.append(item(l, onoff(ov[3] & b, () => setOv(3, ov[3] ^ b)))));
+    h('Affichage');
+    p.append(item('LUT d\'affichage', seg([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))));
+    p.append(item('Mire de couleurs', seg([0,10,30], v => v===0 ? !S.bars : !!S.bars && v!==0 && near(S.bars, v, 15), v => v ? `${v} s` : 'Off', v => CMD.bars(v))));
+    p.append(sliderItem('Luminosité écran caméra', 0, 1, 0.01, S.lcd, pct, v => CMD.lcd(v)));
+    h('Tally');
+    p.append(sliderItem('Luminosité générale', 0, 1, 0.01, S.tally, pct, v => CMD.tally(v)));
+    p.append(sliderItem('Avant', 0, 1, 0.01, S.tallyFront, pct, v => CMD.tallyFR(1, v)));
+    p.append(sliderItem('Arrière', 0, 1, 0.01, S.tallyRear, pct, v => CMD.tallyFR(2, v)));
+    p.append(item('Texte d\'état à l\'écran', onoff((S.overlayEn ?? 3) & 1, () => CMD.overlayEn((S.overlayEn ?? 3) ^ 1))));
+    p.append(item('Repères de cadre à l\'écran', onoff((S.overlayEn ?? 3) & 2, () => CMD.overlayEn((S.overlayEn ?? 3) ^ 2))));
+    camOnly('Réglage séparé écran / HDMI (clean feed par sortie)');
+    camOnly('Zoom de mise au point');
+    camOnly('Désanamorphose');
+    camOnly('Histogramme et vumètres à l\'écran');
+  }
+  if (tab === 'presets') {
+    h('Presets de la caméra');
+    camOnly('Charger / importer / exporter les presets internes');
+    h('Nouveau preset (stocké dans ce moniteur)');
+    const name = Object.assign(document.createElement('input'), {className:'txt', placeholder:`Preset ${P.presets.length+1}`});
+    p.append(item('Nom', name));
+    const chk = document.createElement('div'); chk.className = 'chk';
+    const sel = new Set(P.presetGroups || Object.keys(GROUPS));
+    Object.entries(GROUPS).forEach(([k, l]) => {
+      const lab = document.createElement('label');
+      const c = Object.assign(document.createElement('input'), {type:'checkbox', checked: sel.has(k)});
+      c.onchange = () => { c.checked ? sel.add(k) : sel.delete(k); P.presetGroups = [...sel]; saveP(); };
+      lab.append(c, l); chk.append(lab);
+    });
+    p.append(chk);
+    p.append(rowButtons([['＋ Capturer l\'état actuel de la caméra', () => savePreset(name.value.trim(), [...sel]), 'primary']]));
+    h(`Presets enregistrés (${P.presets.length})`);
+    if (!P.presets.length) p.append(note('Aucun preset pour l\'instant.'));
+    P.presets.forEach((pr, idx) => {
+      const r = document.createElement('div'); r.className = 'preset';
+      const nm = document.createElement('div'); nm.className = 'name';
+      nm.innerHTML = `<div></div><div class="meta"></div>`;
+      nm.firstChild.textContent = pr.name;
+      nm.lastChild.textContent = presetSummary(pr);
+      const b = (l, fn, cls='') => { const x = document.createElement('button'); x.className = 'big ' + cls; x.textContent = l; x.onclick = fn; return x; };
+      r.append(nm,
+        b('Appliquer', () => recallPreset(pr), 'primary'),
+        ...(CAMS.size > 1 ? [b('→ Toutes', () => recallPreset(pr, okIds()))] : []),
+        b('↻ Mettre à jour', () => { if (!connected()) return toast('Pas de caméra connectée'); pr.data = snapshot(Object.keys(pr.data)); saveP(); render(); toast('Preset mis à jour'); }),
+        b('Renommer', () => { const n = prompt('Nouveau nom :', pr.name); if (n) { pr.name = n; saveP(); render(); } }),
+        b('▲', () => { if (idx) { P.presets.splice(idx-1, 0, P.presets.splice(idx,1)[0]); saveP(); render(); } }),
+        b('Supprimer', () => { if (confirm(`Supprimer « ${pr.name} » ?`)) { P.presets.splice(idx,1); P.fkeys = P.fkeys.map(f => f === 'preset:'+pr.id ? 'none' : f); saveP(); render(); } }, 'danger'));
+      p.append(r);
+    });
+    h('Sauvegarde');
+    p.append(rowButtons([['Exporter (JSON)', exportPresets], ['Importer…', () => $('importFile').click()]]));
+    p.append(note('Les presets internes de la caméra (menu Presets) ne sont pas accessibles via Bluetooth : ces presets sont stockés dans ce moniteur et renvoyés à la caméra paramètre par paramètre. Chaque preset peut être assigné à une touche de fonction.'));
+  }
+  if (tab === 'fkeys') {
+    h('Touches de fonction');
+    P.fkeys.forEach((id, i) => {
+      const s = document.createElement('select');
+      const groups = {};
+      allActionIds().forEach(a => { const g = getAction(a).g; (groups[g] ||= []).push(a); });
+      Object.entries(groups).forEach(([g, ids]) => {
+        const og = document.createElement('optgroup'); og.label = g;
+        ids.forEach(a => og.append(new Option(getAction(a).l, a, false, a === id)));
+        s.append(og);
+      });
+      s.onchange = () => { P.fkeys[i] = s.value; saveP(); s.blur(); render(); };
+      p.append(item(`F${i+1}  (touche ${i+1})`, s));
+    });
+    p.append(rowButtons([
+      ['＋ Ajouter une touche', () => { if (P.fkeys.length < 12) { P.fkeys.push('none'); saveP(); render(); } }],
+      ['− Retirer la dernière', () => { if (P.fkeys.length > 1) { P.fkeys.pop(); saveP(); render(); } }],
+      ['Par défaut', () => { P.fkeys = DEFAULT_FKEYS.slice(); saveP(); render(); }],
+    ]));
+    p.append(note('Raccourcis : touches 1 à 9 (ou F1–F9 du clavier). Sur l\'écran : appui long ou clic droit sur une touche pour la réaffecter. Les boutons physiques F1/F2/F3 de la caméra ne sont pas pilotables en Bluetooth : ces touches sont l\'équivalent côté moniteur.'));
+  }
+  if (tab === 'conn') {
+    h('Connexion');
+    const actions = document.createElement('div'); actions.className = 'seg';
+    const mk = (l, fn, cls='') => { const b = document.createElement('button'); b.textContent = l; b.onclick = fn; if (cls) b.className = cls; actions.append(b); };
+    if (RELAY) { mk('Rechercher la caméra', () => cam.cmd('scan'), 'sel'); mk('Appairer', () => cam.cmd('pair', {cam: ACTIVE})); mk('Reconnecter', () => cam.cmd('connect', {cam: ACTIVE})); mk('Déconnecter', () => cam.cmd('disconnect', {cam: ACTIVE})); }
+    else if (cam instanceof BleHub) { mk('+ Ajouter une caméra', () => connect(false), 'sel'); mk('Reconnexion rapide', quickReconnect);
+      if (ACTIVE != null) { mk(`Appairer ${camLabel(ACTIVE)}`, () => cam.cmd('pair')); mk(`Déconnecter ${camLabel(ACTIVE)}`, () => cam.cmd('disconnect')); } }
+    else if (S.link !== 'off') mk('Déconnecter', () => { cam?.disconnect(); onDisconnected(); });
+    else { mk('Connecter (Bluetooth)', () => connect(false), 'sel'); mk('Reconnexion rapide', quickReconnect); mk('Mode démo', () => connect(true)); }
+    p.append(item(`État : ${$('conn').textContent}${S.link==='ok' ? ' — ' + S.name : ''}`, actions));
+    p.append(item('Reconnexion automatique', onoff(P.autoReconnect, v => { P.autoReconnect = v; saveP(); render(); })));
+    p.append(item('Journal détaillé (paquets)', onoff(P.verbose, v => { P.verbose = v; saveP(); render(); })));
+    if (S.link === 'ok') p.append(item('Alimentation', Object.assign(document.createElement('button'), {className:'big danger', textContent:'Éteindre la caméra', onclick: () => confirm('Éteindre la caméra ?') && cam.powerOff()})));
+    h('Journal');
+    const lg = document.createElement('div'); lg.id = 'log'; lg.textContent = LOG.join('\n'); p.append(lg);
+    p.append(rowButtons([['Copier le journal', () => navigator.clipboard.writeText(LOG.join('\n')).then(() => toast('Journal copié'))], ['Effacer', () => { LOG.length = 0; render(); }]]));
+    setTimeout(() => lg.scrollTop = lg.scrollHeight);
+    h('Si la caméra se déconnecte');
+    p.append(note(
+      '1. Une seule télécommande à la fois : coupez le Bluetooth des autres appareils appairés (iPhone/iPad avec Blackmagic Camera Control, etc.).\n' +
+      '2. Repartez d\'un appairage propre : sur la caméra Menu → Setup → Bluetooth Off puis On ; sur le Mac, Réglages → Bluetooth → oubliez la caméra si elle y apparaît.\n' +
+      '3. Reconnectez : la caméra affiche un code à 6 chiffres, saisissez-le rapidement dans la fenêtre macOS (elle peut apparaître en notification).\n' +
+      '4. Il est normal que la caméra coupe le lien juste après le code : la reconnexion automatique reprend la main.\n' +
+      '5. Gardez le Mac à moins de quelques mètres ; le BLE de la Pocket a une portée courte.\n' +
+      'Si cela persiste, activez le journal détaillé et copiez-le.'));
+    p.lastChild.style.whiteSpace = 'pre-line';
+  }
+  p.scrollTop = st;
+}
+function presetSummary(pr) {
+  const d = pr.data, parts = [];
+  if (d.expo) parts.push(`ISO ${d.expo.iso ?? '?'}`, d.expo.shutterMode==='speed' ? `1/${d.expo.speed}` : `${d.expo.angle}°`, d.expo.fnum ? 'f'+d.expo.fnum.toFixed(1) : '');
+  if (d.wb) parts.push(`${d.wb.k}K`);
+  if (d.format && CODECS[d.format.codec]) parts.push(`${CODECS[d.format.codec][0]} ${CODECS[d.format.codec][1][d.format.variant] ?? ''}`);
+  if (d.display) parts.push('affichage');
+  if (d.color) parts.push('couleur');
+  if (d.audio) parts.push('audio');
+  return parts.filter(Boolean).join(' · ');
+}
+function openMenu(tab){
+  hidePicker();
+  if (tab) curTab = tab;
+  document.querySelectorAll('#tabs [data-tab]').forEach(x => x.classList.toggle('sel', x.dataset.tab===curTab));
+  $('menu').classList.add('open'); buildPane(curTab);
+}
+function closeMenu(){ $('menu').classList.remove('open'); }
+
+
+/* =====================================================================
+   ÉVÉNEMENTS
+   ===================================================================== */
+let toastT;
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3500); }
+
+document.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => showPicker(el.dataset.pick));
+$('pkClose').onclick = hidePicker;
+$('recBtn').onclick = () => CMD.record(!S.recording);
+$('btnAF').onclick = () => CMD.af();
+$('btnIris').onclick = () => CMD.autoIris();
+$('btnAWB').onclick = () => CMD.autoWb();
+$('btnPresets').onclick = () => showPicker('presets');
+$('btnMenu').onclick = () => openMenu();
+$('menuClose').onclick = closeMenu;
+$('btnConnect').onclick = () => {
+  if (RELAY) {
+    if (S.link === 'ok') { if (confirm('Déconnecter la caméra du Mac ?')) cam.cmd('disconnect'); }
+    else { cam.cmd(S.link === 'off' ? 'scan' : 'connect'); toast('Demande envoyée au Mac'); }
+    return;
+  }
+  if (cam instanceof BleHub) return connect(false);            // ajoute une caméra
+  if (S.link !== 'off') { if (confirm('Déconnecter la caméra ?')) { cam?.disconnect(); onDisconnected(); } }
+  else if (!navigator.bluetooth) toast(window.isSecureContext === false ? 'Bluetooth bloqué : ouvrez la page en https' : 'Bluetooth indisponible dans ce navigateur (Bluefy sur iPad, Chrome/Edge ailleurs)');
+  else connect(false);
+};
+$('btnConnect').oncontextmenu = e => { e.preventDefault(); if (S.link === 'off') connect(true); };
+document.querySelectorAll('#tabs [data-tab]').forEach(b => b.onclick = () => openMenu(b.dataset.tab));
+document.addEventListener('keydown', e => {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range') return;
+  const k = e.key.toLowerCase();
+  const fk = /^f([1-9])$/.exec(k) || /^([1-9])$/.exec(k);
+  if (fk && !e.metaKey && !e.ctrlKey) { const i = +fk[1]-1; if (i < P.fkeys.length) { e.preventDefault(); runFkey(i); } return; }
+  if (k === ' ') { e.preventDefault(); CMD.record(!S.recording); }
+  else if (k === 'a') CMD.af();
+  else if (k === 'i') CMD.autoIris();
+  else if (k === 'w') CMD.autoWb();
+  else if (k === 'p') showPicker('presets');
+  else if (k === 'm') $('menu').classList.contains('open') ? closeMenu() : openMenu();
+  else if (k === '[') cycleCam(-1);
+  else if (k === ']') cycleCam(1);
+  else if (k === 'l') toggleP('linked');
+  else if (k === 'escape') { hidePicker(); closeMenu(); }
+});
+(async () => {
+  // Servie par l'app Mac ? → mode relais (la tablette n'a pas besoin de Bluetooth)
+  const direct = new URLSearchParams(location.search).has('ble');
+  if (!direct) try {
+    const r = await fetch('/api/info', {cache:'no-store'});
+    if (r.ok) { const j = await r.json(); if (j.app === 'pocket-monitor') RELAY = j; }
+  } catch (e) {}
+  if (RELAY) {
+    cam = new RelayCamera(RELAY.ws); cam.connect();
+    log('Mode relais : la caméra est pilotée par l\'app Pocket Monitor du Mac');
+  } else {
+    if (new URLSearchParams(location.search).has('demo')) connect(true);
+    log('Pocket Monitor prêt' + (navigator.bluetooth ? '' : ' — Web Bluetooth indisponible dans ce navigateur'));
+  }
+  render();
+})();
+</script>
+</body>
+</html>
