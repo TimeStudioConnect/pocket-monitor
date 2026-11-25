@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.25-c\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.25-d\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -278,11 +278,14 @@
 </div>
 
 <script>
+/* Tout le code est isolé dans une fonction : aucun nom global ne peut entrer en conflit
+   avec le code que certains navigateurs (ex. Bluefy) ajoutent à la page. */
+(function () {
 'use strict';
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.25-c';
+const APP_VERSION = '2025.11.25-d';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -1819,6 +1822,10 @@ document.addEventListener('keydown', e => {
     log('Pocket Monitor prêt' + (navigator.bluetooth ? '' : ' — Web Bluetooth indisponible dans ce navigateur'));
   }
   render();
+})();
+
+// Accès de diagnostic (console) : __pm('CAMS.size'), etc.
+window.__pm = function (code) { return eval(code); };
 })();
 </script>
 </body>
