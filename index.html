@@ -11,6 +11,25 @@
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="theme-color" content="#000000">
 <title>Pocket Monitor BLE</title>
+<script>
+/* Affiche à l'écran toute erreur JavaScript (utile sur iPad, sans console). Écrit en ES5 volontairement. */
+(function () {
+  function show(msg) {
+    var b = document.getElementById('errbar');
+    if (!b) {
+      b = document.createElement('div'); b.id = 'errbar';
+      b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
+      b.onclick = function () { b.parentNode.removeChild(b); };
+      (document.body || document.documentElement).appendChild(b);
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.25-c\n' + navigator.userAgent + '\n';
+    }
+    b.textContent += '\n• ' + msg;
+  }
+  window.addEventListener('error', function (e) { show((e.message || 'erreur') + (e.lineno ? ' (ligne ' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { var r = e.reason; show('Promesse rejetée : ' + (r && r.message ? r.message : r)); });
+  window.addEventListener('load', function () { if (!window.__pmReady) show('Le script principal ne s\'est pas lancé (navigateur trop ancien ?)'); });
+})();
+</script>
 <style>
   :root{
     --bg:#000; --bar:rgba(16,16,16,.92); --txt:#e8e8e8; --dim:#8a8a8a;
@@ -19,7 +38,14 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
     font:500 15px/1.2 -apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif;overflow:hidden;user-select:none}
-  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touch-action:manipulation}
+  html,body{touch-action:manipulation;-webkit-touch-callout:none;-webkit-text-size-adjust:100%}
+  @media (hover:hover){
+    .cell.tap:hover{background:#222} .tile:hover{background:#1a1a1a;border-color:#3a3a3a}
+    .sbtn:hover{background:#262626} .opt:hover:not(.sel){background:#2b2b2b}
+  }
+  button:active{filter:brightness(1.35)}
+  #perf{position:fixed;right:calc(96px + var(--sr));bottom:calc(64px + var(--sb));z-index:70;background:rgba(0,0,0,.85);border:1px solid #444;border-radius:6px;padding:6px 8px;font:11px/1.4 ui-monospace,Menlo,monospace;color:#9f9;pointer-events:none;white-space:pre;display:none}
   :root{--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
   #app{position:fixed;inset:0;padding:var(--st) var(--sr) var(--sb) var(--sl);display:grid;grid-template-rows:auto auto 1fr auto;grid-template-columns:auto 1fr auto}
 
@@ -28,7 +54,6 @@
   #top{border-bottom:1px solid var(--line)}
   #bottom{border-top:1px solid var(--line)}
   .cell{display:flex;flex-direction:column;justify-content:center;padding:6px 14px;border-right:1px solid var(--line);min-width:0;flex:0 0 auto}
-  .cell.tap:hover{background:#222}
   .cell .lab{font-size:10px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;white-space:nowrap}
   .cell .val{font-size:19px;font-variant-numeric:tabular-nums;white-space:nowrap}
   .cell.grow{flex:1 0 auto;align-items:center}
@@ -46,7 +71,6 @@
   #view.rec{box-shadow:inset 0 0 0 3px var(--rec)}
   #dash{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;width:100%;max-width:1100px}
   .tile{background:#121212;border:1px solid #262626;border-radius:12px;padding:14px 16px;text-align:left;display:flex;flex-direction:column;gap:6px;min-height:92px}
-  .tile:hover{background:#1a1a1a;border-color:#3a3a3a}
   .tile .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
   .tile .val{font-size:30px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tile .sub{font-size:12px;color:var(--dim)}
@@ -95,7 +119,6 @@
   #side{grid-column:3/4;border-left:1px solid var(--line);width:86px}
   #fcol{grid-column:1/2;border-right:1px solid var(--line);width:76px}
   .sbtn{width:68px;min-height:48px;border-radius:10px;background:#1d1d1d;border:1px solid #2e2e2e;font-size:12px;letter-spacing:.05em;display:flex;align-items:center;justify-content:center;text-align:center;flex:0 0 auto;padding:2px}
-  .sbtn:hover{background:#262626}
   .sbtn.on{border-color:var(--acc);color:var(--acc)}
   .fkey{width:60px;min-height:52px;flex-direction:column;gap:3px;font-size:11px}
   .fkey small{font-size:9px;color:var(--dim);letter-spacing:.1em}
@@ -118,7 +141,6 @@
   .opt{flex:0 0 auto;min-width:64px;padding:12px 12px;border-radius:8px;background:#222;border:1px solid #2f2f2f;font-size:16px;font-variant-numeric:tabular-nums;text-align:center}
   .opts.wrap .opt{font-size:14px;padding:10px 12px}
   .opt.sel{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
-  .opt:hover:not(.sel){background:#2b2b2b}
   .row{display:flex;align-items:center;gap:12px;margin-top:12px}
   .row label{width:90px;color:var(--dim);font-size:13px;flex:0 0 auto}
   .row output{width:64px;text-align:right;font-variant-numeric:tabular-nums;flex:0 0 auto}
@@ -230,12 +252,14 @@
     <div class="tgroup">Moniteur</div>
     <button data-tab="fkeys">Touches de fonction</button>
     <button data-tab="conn">Connexion & diagnostic</button>
+    <div class="tgroup" id="verTag"></div>
     <button class="close" id="menuClose">✕ Fermer</button>
   </div>
   <div id="pane"></div>
 </div>
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div id="toast"></div>
+<div id="perf"></div>
 <div id="pair">
   <div class="box">
     <h2>Appairage Bluetooth</h2>
@@ -258,6 +282,8 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
+const APP_VERSION = '2025.11.25-c';
+window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
   outgoing: '5dd3465f-1aee-4299-8493-d2eca2f8e1bb',
@@ -410,6 +436,7 @@ function log(msg) {
 }
 
 function applyCommand({cat, param, values: v}) {
+  PERF.pk++;
   const k = cat + '.' + param;
   if (P.verbose) log(`← ${k} = ${v.map(x => Math.round(x*1000)/1000).join(', ')}`);
   const A = S.audio, C = S.cc;
@@ -1069,8 +1096,30 @@ const fmt = {
 function renderTc(){ $('tcTxt').textContent = S.tc; $('tc').classList.toggle('rec', S.recording); }
 
 let rTimer = null;
-function render(){ if (!rTimer) rTimer = setTimeout(() => { rTimer = null; doRender(); }, 16); }
+/* Rendu : au plus ~12 fois/s ; le menu et les sélecteurs ne sont reconstruits qu'au plus 2,5 fois/s
+   et jamais pendant qu'un doigt est posé (sinon le bouton touché disparaît et le toucher est perdu). */
+let TOUCHING = false, lastPanel = 0, panelTimer = null;
+document.addEventListener('pointerdown', () => { TOUCHING = true; }, true);
+const endTouch = () => setTimeout(() => { TOUCHING = false; }, 250);
+document.addEventListener('pointerup', endTouch, true);
+document.addEventListener('pointercancel', endTouch, true);
+/** Remplace le contenu HTML seulement s'il a changé (évite de recréer les boutons pour rien). */
+function setHTML(el, html) { if (el && el._h !== html) { el._h = html; el.innerHTML = html; } }
+const PERF = {pk:0, rd:0, tap:0, lagMax:0, last:performance.now()};
+document.addEventListener('pointerdown', () => PERF.tap++, true);
+setInterval(() => {   // mesure le retard de la boucle d'événements (si la page est surchargée, il grimpe)
+  const now = performance.now(); PERF.lagMax = Math.max(PERF.lagMax, now - PERF.last - 100); PERF.last = now;
+}, 100);
+setInterval(() => {
+  const el = document.getElementById('perf');
+  const on = P.perf || new URLSearchParams(location.search).has('perf');
+  el.style.display = on ? 'block' : 'none';
+  if (on) el.textContent = `version ${APP_VERSION}\nmessages caméra : ${PERF.pk}/s\nrendus : ${PERF.rd}/s\ntouchers : ${PERF.tap}/s\nretard max : ${Math.round(PERF.lagMax)} ms\ncaméras : ${okIds().length}/${CAMS.size}`;
+  PERF.pk = PERF.rd = PERF.tap = 0; PERF.lagMax = 0;
+}, 1000);
+function render(){ if (!rTimer) rTimer = setTimeout(() => { rTimer = null; doRender(); }, 80); }
 function doRender() {
+  PERF.rd++;
   $('vFps').textContent = fmt.fps();
   $('lShutter').textContent = S.shutterMode==='angle' ? 'Shutter' : 'Speed';
   $('vShutter').textContent = fmt.shutter();
@@ -1083,7 +1132,7 @@ function doRender() {
   $('vTint').textContent = S.tint==null ? '--' : (S.tint>0?'+':'') + S.tint;
   $('vFocus').textContent = fmt.pct(S.focus);
   $('vDr').textContent = S.dynRange==null ? '--' : DR[S.dynRange] ?? S.dynRange;
-  $('vTools').innerHTML = [['ZEB',1],['PEAK',2],['FC',4]].map(([n,b]) => `<span class="badge ${S.tools&b?'on':''}">${n}</span>`).join('');
+  setHTML($('vTools'), [['ZEB',1],['PEAK',2],['FC',4]].map(([n,b]) => `<span class="badge ${S.tools&b?'on':''}">${n}</span>`).join(''));
   const nt = targets().length;
   $('vName').textContent = CAMS.size > 1 ? `${camLabel(ACTIVE)}${nt > 1 ? `  → ${nt} cam.` : ''}` : S.name;
   $('recDot').classList.toggle('rec', S.recording);
@@ -1094,8 +1143,18 @@ function doRender() {
   $('conn').className = S.link==='ok' ? 'ok' : S.link==='off' ? '' : 'retry';
   $('btnConnect').classList.toggle('on', S.link==='ok');
   renderTc(); renderDash(); renderFkeys(); renderStrip();
-  if (openPicker) buildPicker(openPicker, true);
-  if ($('menu').classList.contains('open')) buildPane(curTab, true);
+  const menuOpen = $('menu').classList.contains('open');
+  if (openPicker || menuOpen) {
+    const wait = 400 - (performance.now() - lastPanel);
+    if (TOUCHING || wait > 0) {
+      clearTimeout(panelTimer);
+      panelTimer = setTimeout(render, Math.max(wait, 300));
+    } else {
+      lastPanel = performance.now();
+      if (openPicker) buildPicker(openPicker, true);
+      if (menuOpen) buildPane(curTab, true);
+    }
+  }
 }
 function renderFkeys() {
   const col = $('fcol');
@@ -1115,7 +1174,7 @@ function renderFkeys() {
   }
   P.fkeys.forEach((id, i) => {
     const a = getAction(id), b = col.children[i];
-    b.innerHTML = `<small>F${i+1}</small>${a.s}`;
+    setHTML(b, `<small>F${i+1}</small>${a.s}`);
     b.classList.toggle('on', !!a.on?.());
   });
 }
@@ -1136,11 +1195,11 @@ function renderStrip() {
       <span class="ctc" data-tc="${c.id}">${s.tc}</span></button>`;
   }).join('');
   const nLinked = g.filter(camOk).length;
-  el.innerHTML = chips + `<span class="sp"></span>
+  setHTML(el, chips + `<span class="sp"></span>
     <button class="chipbtn${P.linked ? ' on' : ''}" data-x="link" title="Les réglages s'appliquent à toutes les caméras du groupe 🔗">🔗 Lier : ${P.linked ? nLinked + ' cam.' : 'off'}</button>
     <button class="chipbtn" data-x="all">Tout lier</button>
     ${cam instanceof BleHub ? '<button class="chipbtn" data-x="add">＋ Caméra</button>' : ''}
-    <button class="chipbtn recall${okIds().some(id => CAMS.get(id).state.recording) ? ' on' : ''}" data-x="rec">● REC toutes</button>`;
+    <button class="chipbtn recall${okIds().some(id => CAMS.get(id).state.recording) ? ' on' : ''}" data-x="rec">● REC toutes</button>`);
 }
 $id('camstrip').addEventListener('click', e => {
   const grp = e.target.closest('[data-grp]');
@@ -1158,7 +1217,7 @@ function renderDash() {
   const T = (pick, lab, val, sub='', on=false, wide=false) =>
     `<button class="tile${on?' on':''}${wide?' wide':''}" ${pick ? `data-pick="${pick}"` : `data-act="${lab}"`}><span class="lab">${lab}</span><span class="val">${val}</span><span class="sub">${sub}</span></button>`;
   const A = S.audio;
-  $('dash').innerHTML = [
+  setHTML($('dash'), [
     T('iso', 'ISO', S.iso ?? '--', S.gainDb != null ? `${S.gainDb > 0 ? '+' : ''}${S.gainDb} dB` : ''),
     T('shutter', S.shutterMode==='angle' ? 'Obturateur' : 'Vitesse', fmt.shutter(), S.autoExp ? 'Expo auto' : 'Manuel'),
     T('iris', 'Iris', fmt.iris()),
@@ -1173,7 +1232,7 @@ function renderDash() {
     T('', 'False color', S.tools & 4 ? 'On' : 'Off', '', !!(S.tools & 4)),
     T('', 'Audio', A.input==null ? '--' : AUDIO_IN[A.input], A.phantom ? '48V activé' : '', !!A.phantom, true),
     T('', 'Slate', S.slate.scene ? `Sc ${S.slate.scene} · P${S.slate.take ?? '-'}` : (S.slate.take ? `Prise ${S.slate.take}` : '--'), S.slate.project || '', false, true),
-  ].join('');
+  ].join(''));
 }
 $id('dash').addEventListener('click', e => {
   const t = e.target.closest('.tile'); if (!t) return;
@@ -1634,7 +1693,7 @@ function buildPane(tab, refresh=false) {
     P.fkeys.forEach((id, i) => {
       const s = document.createElement('select');
       const groups = {};
-      allActionIds().forEach(a => { const g = getAction(a).g; (groups[g] ||= []).push(a); });
+      allActionIds().forEach(a => { const g = getAction(a).g; (groups[g] = groups[g] || []).push(a); });
       Object.entries(groups).forEach(([g, ids]) => {
         const og = document.createElement('optgroup'); og.label = g;
         ids.forEach(a => og.append(new Option(getAction(a).l, a, false, a === id)));
@@ -1661,6 +1720,8 @@ function buildPane(tab, refresh=false) {
     else { mk('Connecter (Bluetooth)', () => connect(false), 'sel'); mk('Reconnexion rapide', quickReconnect); mk('Mode démo', () => connect(true)); }
     p.append(item(`État : ${$('conn').textContent}${S.link==='ok' ? ' — ' + S.name : ''}`, actions));
     p.append(item('Reconnexion automatique', onoff(P.autoReconnect, v => { P.autoReconnect = v; saveP(); render(); })));
+    p.append(item('Version de la page', span(APP_VERSION)));
+    p.append(item('Compteur de performance', onoff(P.perf, v => { P.perf = v; saveP(); })));
     p.append(item('Journal détaillé (paquets)', onoff(P.verbose, v => { P.verbose = v; saveP(); render(); })));
     if (S.link === 'ok') p.append(item('Alimentation', Object.assign(document.createElement('button'), {className:'big danger', textContent:'Éteindre la caméra', onclick: () => confirm('Éteindre la caméra ?') && cam.powerOff()})));
     h('Journal');
@@ -1690,6 +1751,7 @@ function presetSummary(pr) {
   return parts.filter(Boolean).join(' · ');
 }
 function openMenu(tab){
+  $('verTag').textContent = 'Version ' + APP_VERSION;
   hidePicker();
   if (tab) curTab = tab;
   document.querySelectorAll('#tabs [data-tab]').forEach(x => x.classList.toggle('sel', x.dataset.tab===curTab));
