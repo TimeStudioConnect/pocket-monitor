@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-k\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-l\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -234,6 +234,8 @@
   .tile .sub{font-size:12px;color:#777;min-height:14px}
   .tile.small{min-height:74px;padding:12px 16px} .tile.small .val{font-size:20px}
   .tile.on{border-color:rgba(255,176,0,.5)} .tile.on .val{color:var(--acc)}
+  .tile.unk{opacity:.45} .tile.unk .sub{color:var(--warn)}
+  .warnbox{border:1px solid #5a4313;background:#1d170a;color:#e8c27a;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5;margin:0 0 12px}
   #picker{left:var(--sl);right:calc(104px + var(--sr))}
   @media (max-width:900px){ #dash{grid-template-columns:repeat(2,minmax(0,1fr))} #tcbox{font-size:18px} .hbtn{padding:9px 10px} }
 </style>
@@ -303,7 +305,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-k';
+const APP_VERSION = '2025.11.26-l';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -506,6 +508,7 @@ function applyCommand({cat, param, op, values: v}) {
     case '12.14': S.slate.slateMode = v[0]; break;
     case '10.1': S.transportMode = v[0]; S.playSpeed = v[1] ?? 0; S.recording = v[0] === 2; S.transportFlags = v[2] ?? 0; S.media = [v[3] ?? null, v[4] ?? null]; break;
     case '0.6':  S.ois = !!v[0]; break;
+    case '9.0':  if (v.length >= 2 && v[1] >= 0 && v[1] <= 100) S.battery = {mv: v[0], pct: v[1]}; break;   // non documenté : interprétation probable
     case '3.3':  S.overlay = v.slice(0,4); break;
     case '4.5':  S.focusMethod = v[0]; S.focusColor = v[1]; break;
     case '4.7':  S.tcSource = v[0]; break;
@@ -1020,7 +1023,11 @@ const PARAM_NAMES = {'0.0':'Focus','0.2':'Iris','0.6':'Stabilisation','0.8':'Zoo
       '0.3':'Iris (normalisé)','0.4':'Iris (crans)','0.7':'Zoom (mm)','1.5':'Exposition (µs)','1.6':'Exposition (crans)','2.2':'Mix casque',
       '3.1':'Style de repères (anciens firmwares)','3.2':'Opacité des repères (anciens firmwares)','4.6':'Retour programme',
       '6.0':'Référence (genlock)','6.1':'Décalage de référence','12.0':'Bobine','12.1':'Scène : type de plan / int-ext / jour-nuit',
-      '12.3':'Prise','12.4':'Bonne prise','12.14':'Slate pour (enreg. / lecture)'};
+      '12.3':'Prise','12.4':'Bonne prise','12.14':'Slate pour (enreg. / lecture)',
+      '0.1':'Autofocus (déclencheur)','10.5':'Non documenté','12.2':'Scène','12.5':'ID caméra','12.6':'Opérateur','12.7':'Réalisateur',
+      '12.8':'Projet','12.9':'Objectif','12.10':'Ouverture (texte)','12.11':'Focale (texte)','12.12':'Distance (texte)','12.13':'Filtre (texte)',
+      '12.15':'Cible du slate','9.0':'Batterie ? (non documenté : mV, %, état)','9.1':'Non documenté (catégorie 9)','9.2':'Non documenté (catégorie 9)',
+      '9.5':'Non documenté (catégorie 9)','9.6':'Non documenté (catégorie 9)','9.7':'Non documenté (catégorie 9)','9.8':'Non documenté (catégorie 9)','255.255':'(message vide)'};
 
 /* Sonde : le protocole n'a pas de commande « lire ». On envoie pour chaque paramètre un DÉCALAGE DE 0
    (opération 1 du manuel) : la valeur ne change pas, mais la caméra la renvoie si elle gère ce réglage.
@@ -1393,7 +1400,7 @@ function renderStrip() {
   const g = groupIds(), multi = CAMS.size > 1;
   const chips = [...CAMS.values()].sort((a, b) => a.id - b.id).map(c => {
     const s = c.state, lk = s.link === 'ok' ? 'ok' : s.link === 'off' ? 'off' : 'wait';
-    const sub = s.link === 'ok' ? withCam(c.id, () => `ISO ${s.iso ?? '--'} · ${fmt.shutter()} · ${fmt.iris()}`) : linkLabel(s.link);
+    const sub = s.link === 'ok' ? withCam(c.id, () => `ISO ${s.iso ?? '--'} · ${fmt.shutter()} · ${fmt.iris()}${s.battery ? ` · 🔋${s.battery.pct}%` : ''}`) : linkLabel(s.link);
     return `<button class="chip${c.id === ACTIVE ? ' act' : ''}${g.includes(c.id) ? ' grp' : ''}${s.recording ? ' rec' : ''}" data-id="${c.id}">
       ${multi ? `<span class="ln" data-grp="${c.id}" title="Ajouter / retirer du groupe lié">${g.includes(c.id) ? '🔗' : '○'}</span>` : ''}
       <span class="cl"><b><i class="d ${lk}"></i>${esc(c.label)}</b><small>${esc(sub)}</small></span></button>`;
@@ -1413,10 +1420,20 @@ $id('camstrip').addEventListener('click', e => {
   if (chip) setActive(+chip.dataset.id);
 });
 
+/** La caméra a-t-elle déjà envoyé ce réglage ? (connexion ou sondage). Sinon il est sans doute sans effet. */
+const confirmed = k => S.link !== 'ok' || !!(S.seen && S.seen[k]);
+const confirmedGroup = prefix => S.link !== 'ok' || Object.keys(S.seen || {}).some(k => k.startsWith(prefix));
+function warnUnconfirmed(p, prefix, what) {
+  if (confirmedGroup(prefix)) return;
+  const d = document.createElement('div'); d.className = 'warnbox';
+  d.textContent = `⚠ ${what} : ${camLabel(ACTIVE)} n’a jamais envoyé ces réglages (ni à la connexion, ni au sondage). Ils sont très probablement sans effet sur cette caméra.`;
+  p.append(d);
+}
 function renderDash() {
   const T = (pick, lab, val, sub = '', on = false, cls = '') =>
     `<button class="tile${on ? ' on' : ''}${cls ? ' ' + cls : ''}" ${pick ? `data-pick="${pick}"` : `data-act="${lab}"`}><span class="lab">${lab}</span><span class="val">${esc(val)}</span><span class="sub">${esc(sub)}</span></button>`;
   const sec = t => `<div class="dsec">${t}</div>`;
+  const unk = k => confirmed(k) ? '' : ' unk';
   const ae = ['','Iris auto','Shutter auto','Iris + shutter auto','Shutter + iris auto'][S.autoExp || 0];
   setHTML($('dash'), [
     sec('Exposition'),
@@ -1431,10 +1448,10 @@ function renderDash() {
     lutSupported() ? T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn)
                    : T('ae', 'Expo auto', S.autoExp == null ? '--' : AE_NAMES[S.autoExp], '', !!S.autoExp),
     sec('Assistance'),
-    T('focus', 'Focus', fmt.pct(S.focus), '', false, 'small'),
-    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small'),
-    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', '', !!(S.tools & 2), 'small'),
-    T('', 'False color', S.tools & 4 ? 'On' : 'Off', '', !!(S.tools & 4), 'small'),
+    T('focus', 'Focus', fmt.pct(S.focus), confirmed('0.0') ? '' : 'non confirmé', false, 'small' + unk('0.0')),
+    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', !confirmed('4.1') ? 'non confirmé' : S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small' + unk('4.1')),
+    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', confirmed('4.1') ? '' : 'non confirmé', !!(S.tools & 2), 'small' + unk('4.1')),
+    T('', 'False color', S.tools & 4 ? 'On' : 'Off', confirmed('4.1') ? '' : 'non confirmé', !!(S.tools & 4), 'small' + unk('4.1')),
   ].join(''));
 }
 $id('dash').addEventListener('click', e => {
@@ -1818,6 +1835,7 @@ function buildPane(tab, refresh=false) {
     p.append(note('Le zoom n\'agit qu\'avec un objectif à zoom motorisé compatible.'));
   }
   if (tab === 'color') {
+    warnUnconfirmed(p, '8.', 'Correction couleur');
     const C = S.cc;
     const wheel = (name, param, key, min, max, def) => {
       h(name);
@@ -1840,6 +1858,7 @@ function buildPane(tab, refresh=false) {
     p.append(note('Double-clic sur un curseur : valeur neutre. La correction s\'applique au rendu caméra (fichiers vidéo / ProRes, et métadonnées en BRAW).'));
   }
   if (tab === 'audio') {
+    warnUnconfirmed(p, '2.', 'Audio');
     const A = S.audio;
     h('Entrée');
     p.append(item('Source', seg([0,1,2,3], v => v===A.input, v => AUDIO_IN[v], v => CMD.audioIn(v))));
@@ -1857,6 +1876,7 @@ function buildPane(tab, refresh=false) {
     p.append(note('Attention : n\'activez le 48V qu\'avec un micro qui le nécessite.'));
   }
   if (tab === 'monitor') {
+    warnUnconfirmed(p, '4.', 'Outils d’affichage (zebra, peaking, false color…)');
     h('Outils caméra (écran / HDMI de la caméra)');
     p.append(item('Zebra', onoff(flag(1), () => toggleTool(1))));
     p.append(item('Niveau zebra', seg([0.75,0.8,0.85,0.9,0.95,1], v => near(S.zebraLevel, v, .02), pct, v => CMD.zebraLvl(v))));
