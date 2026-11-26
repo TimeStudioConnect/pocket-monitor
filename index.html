@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-g\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-h\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -194,6 +194,13 @@
   .big.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
   .big.danger{border-color:#7a2a2a;color:#ff8a80}
 
+  /* Appui long : ni sélection de texte ni bulle « Copier » d'iOS (sauf champs de saisie) */
+  *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  input,textarea,select,.txt,#log{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+  #fbar.edit .fkey{border-style:dashed;border-color:var(--acc)}
+  #fedit.on{background:var(--acc);color:#000;border-style:solid}
+  .pgrp{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#777;margin:14px 0 6px}
+  .pgrp:first-child{margin-top:0}
   /* ================= Mise en page épurée ================= */
   #app{grid-template-rows:auto 1fr auto;grid-template-columns:1fr auto}
   #hdr{grid-column:1/3;grid-row:1;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0b0b0b;border-bottom:1px solid #1c1c1c;min-height:60px}
@@ -296,7 +303,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-g';
+const APP_VERSION = '2025.11.26-h';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -537,6 +544,8 @@ const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/
 
 class BleCamera {
   constructor(device, id, hub) { this.device = device; this.id = id; this.hub = hub; this.q = Promise.resolve(); this.want = false; this.phase = 'off'; this.attempt = 0; this.hint = ''; }
+  /** Déjà appairée avec cet appareil (mémorisé) : une coupure = simple reconnexion, pas de code. */
+  get paired() { return !!(P.blePaired || {})[this.device.id]; }
   static async pick() {
     if (!navigator.bluetooth) throw new Error(window.isSecureContext === false
       ? 'Bluetooth bloqué : la page doit être ouverte en https.'
@@ -560,8 +569,8 @@ class BleCamera {
     catch (e) {
       this.log('Échec : ' + (e.message || e));
       if (!this.want) return;
-      if (!this.everOk) this.setPhase('lost', e.message || String(e));
-      else this.setPhase('off', e.message || String(e));
+      if (!this.everOk && !this.paired) this.setPhase('lost', e.message || String(e));
+      else this.reconnectLoop(e.message || String(e));   // déjà appairée : on réessaie tout seul
     }
   }
   /** Relance (bouton) : repasse par la file. */
@@ -614,6 +623,7 @@ class BleCamera {
       } catch (e) {}
       try { const dn = await svc.getCharacteristic(UUID.devName); await dn.writeValue(new TextEncoder().encode('Pocket Monitor')); } catch (e) {}
       this.everOk = true; this.attempt = 0;
+      if (!this.paired) { P.blePaired = Object.assign({}, P.blePaired, {[this.device.id]: true}); saveP(); }
       this.setPhase('ok');
       this.log('Connectée ✓');
     } finally { this.inSetup = false; }
@@ -622,8 +632,13 @@ class BleCamera {
     if (this.inSetup) { this.codeEntered(); return; }   // pendant setup : réveille l'attente du code, connect() gère l'erreur
     if (!this.want || this.retrying) return;
     this.log('Lien Bluetooth perdu');
-    if (!this.everOk) { this.setPhase('lost', 'La caméra a coupé la connexion'); return; }
-    if (!P.autoReconnect) { this.setPhase('off'); return; }
+    if (!this.everOk && !this.paired) { this.setPhase('lost', 'La caméra a coupé la connexion'); return; }
+    this.reconnectLoop();
+  }
+  /** Reconnexion automatique (caméra déjà appairée) : jusqu'à 10 essais espacés. */
+  async reconnectLoop(why = '') {
+    if (!P.autoReconnect) { this.setPhase('off', why); return; }
+    if (this.retrying) return;
     this.retrying = true;
     for (let n = 1; n <= 10 && this.want; n++) {
       this.attempt = n; this.setPhase('retry');
@@ -671,7 +686,7 @@ class BleHub {
     camState(id);
     if (!CAMS.has(ACTIVE) || ACTIVE == null) setActive(id, false);
     if (c.phase === 'ok') { toast(`${camLabel(id)} est déjà connectée`); return Promise.resolve(); }
-    if (c.phase === 'queued' || c.phase === 'connecting' || c.phase === 'pairing') return Promise.resolve();
+    if (['queued','connecting','pairing','retry'].includes(c.phase)) return Promise.resolve();
     return c.retry();
   }
   forget(id) {
@@ -683,10 +698,13 @@ class BleHub {
     if (ACTIVE === id) { ACTIVE = null; const f = [...CAMS.keys()][0]; if (f != null) setActive(f, false); else S = newState(); }
     render();
   }
-  async reconnectKnown() {
-    if (!navigator.bluetooth?.getDevices) return toast('Reconnexion automatique non disponible ici : utilisez « Ajouter une caméra »');
-    const devs = await navigator.bluetooth.getDevices();
-    if (!devs.length) return toast('Aucune caméra mémorisée sur cet appareil');
+  async reconnectKnown(silent = false) {
+    if (!navigator.bluetooth?.getDevices) { if (!silent) toast('Reconnexion automatique non disponible dans ce navigateur : utilisez « Ajouter une caméra »'); return; }
+    let devs = [];
+    try { devs = await navigator.bluetooth.getDevices(); } catch (e) {}
+    devs = devs.filter(d => (P.bleIds || {})[d.id] != null);
+    if (!devs.length) { if (!silent) toast('Aucune caméra mémorisée sur cet appareil'); return; }
+    if (!silent) toast(`Reconnexion de ${devs.length} caméra(s)…`);
     devs.forEach(d => this.add(d).catch(() => {}));   // la file les traite une par une
   }
   attention() { return [...this.cams.values()].filter(c => c.phase === 'pairing' || c.phase === 'lost').length; }
@@ -729,8 +747,8 @@ function buildCamPanel(body) {
 function camCard(c, hub) {
   const lbl = camLabel(c.id);
   const d = document.createElement('div'); d.className = 'camcard ph-' + c.phase;
-  const st = {queued:'En attente de son tour…', connecting:'Connexion…', pairing:'Code à saisir', lost:'Appairage interrompu',
-              ok:'Connectée ✓', retry:`Signal perdu — reconnexion (essai ${c.attempt}/10)`, off:'Déconnectée'}[c.phase] || c.phase;
+  const st = {queued:'En attente de son tour…', connecting: c.paired ? 'Reconnexion…' : 'Connexion…', pairing:'Code à saisir', lost:'Appairage interrompu',
+              ok:'Connectée ✓', retry:`Reconnexion automatique (essai ${c.attempt}/10)`, off: c.paired ? 'Hors de portée ou éteinte' : 'Déconnectée'}[c.phase] || c.phase;
   d.innerHTML = `<div class="cc-h"><i class="d"></i><b>${esc(lbl)}</b><small>${esc(c.device.name || '')}</small><span class="cc-s">${esc(st)}</span></div>`;
   if (c.phase === 'pairing') {
     const ol = document.createElement('ol');
@@ -747,7 +765,7 @@ function camCard(c, hub) {
     lost:       [['Relancer l\'appairage', () => c.retry(), 'primary'], ['Oublier', () => hub.forget(c.id), 'danger']],
     off:        [['Reconnecter', () => c.retry(), 'primary'], ['Oublier', () => hub.forget(c.id), 'danger']],
     ok:         [['Afficher', () => { setActive(c.id); hidePicker(); }], ['Déconnecter', () => c.disconnect()]],
-    retry:      [['Arrêter', () => c.disconnect()]],
+    retry:      [['Reconnecter maintenant', () => { c.retrying = false; c.retry(); }, 'primary'], ['Arrêter', () => c.disconnect()]],
     queued:     [['Annuler', () => c.disconnect()]],
     connecting: [['Annuler', () => c.disconnect()]],
   }[c.phase] || [];
@@ -932,7 +950,7 @@ const CMD = {
   dynRange:v => send(packet(1,7,T.I8,enc.i8([v]))),
   sharp:   v => send(packet(1,8,T.I8,enc.i8([v]))),
   autoExp: v => send(packet(1,10,T.I8,enc.i8([v]))),
-  lut:     (l,on) => send(packet(1,15,T.I8,enc.i8([l,on?1:0]))),
+  lut:     (l,on) => { if (l > 0) { P.lastLut = l; saveP(); } return send(packet(1,15,T.I8,enc.i8([l,on?1:0]))); },
   codec:   (c,v) => send(packet(10,0,T.I8,enc.i8([c,v]))),
   record:  on => send(packet(10,1,T.I8,enc.i8([on?2:0,0,0,0,0]))),
   tools:   f => send(packet(4,1,T.I16,enc.i16([f]))),
@@ -1036,7 +1054,7 @@ const ACTIONS = {
   zebra:     {l:'Zebra (caméra)', s:'ZEBRA', g:'Outils caméra', run:()=>toggleTool(1), on:()=>!!(S.tools&1)},
   peaking:   {l:'Focus assist (caméra)', s:'PEAK', g:'Outils caméra', run:()=>toggleTool(2), on:()=>!!(S.tools&2)},
   falseColor:{l:'False color (caméra)', s:'FALSE C', g:'Outils caméra', run:()=>toggleTool(4), on:()=>!!(S.tools&4)},
-  lut:       {l:'LUT d\'affichage on/off', s:'LUT', g:'Outils caméra', run:()=>CMD.lut(S.lut||2, !S.lutOn), on:()=>S.lutOn},
+  lut:       {l:'LUT d\'affichage on/off', s:'LUT', g:'Outils caméra', run:()=>toggleLut(), on:()=>!!S.lutOn},
   bars:      {l:'Mire de couleurs', s:'BARS', g:'Outils caméra', run:()=>CMD.bars(S.bars?0:30), on:()=>!!S.bars},
   dr:        {l:'Plage dynamique suivante', s:'DR', g:'Image', run:()=>CMD.dynRange(((S.dynRange??0)+1)%3)},
   isoUp:     {l:'ISO +', s:'ISO +', g:'Image', run:()=>{ const v=step(ISOS,S.iso,1); v&&CMD.iso(v); }},
@@ -1074,7 +1092,15 @@ const ACTIONS = {
   camPrev:   {l:'Caméra précédente', s:'◀ CAM', g:'Multicam', run:()=>cycleCam(-1)},
   menu:      {l:'Ouvrir le menu', s:'MENU', g:'Interface', run:()=>openMenu()},
 };
+let FEDIT = false;   // mode édition des touches de fonction
 function toggleP(k){ P[k] = !P[k]; saveP(); render(); }
+/* LUT d'affichage : on garde la dernière LUT choisie (sinon « film → vidéo ») et on bascule tout de suite à l'écran. */
+function toggleLut() {
+  const l = S.lut > 0 ? S.lut : (P.lastLut || 2);
+  S.lut = l; S.lutOn = !S.lutOn;
+  CMD.lut(l, S.lutOn); render();
+  toast(S.lutOn ? `LUT : ${LUTS[l]}` : 'LUT désactivée');
+}
 /* Repères / grille de la caméra (3.3) : [style de cadre, opacité %, zone de sécurité %, grille (bits)] */
 const ov = () => S.overlay || [0, 100, 0, 0];
 function setOverlay(i, v) { const o = ov().slice(); o[i] = v; S.overlay = o; CMD.overlay(o); render(); }   // mise à jour immédiate : plusieurs touches de suite se cumulent
@@ -1263,7 +1289,7 @@ function renderFkeys() {
       b.title = `F${i+1} — appui long ou clic droit pour assigner`;
       let t, long = false;
       b.onpointerdown = () => { long = false; t = setTimeout(() => { long = true; showPicker('assign:'+i); }, 550); };
-      b.onpointerup = () => { clearTimeout(t); if (!long) runFkey(i); };
+      b.onpointerup = () => { clearTimeout(t); if (long) return; FEDIT ? showPicker('assign:' + i) : runFkey(i); };
       b.onpointerleave = () => clearTimeout(t);
       b.oncontextmenu = e => { e.preventDefault(); clearTimeout(t); showPicker('assign:'+i); };
       col.appendChild(b);
@@ -1376,9 +1402,16 @@ function buildPicker(kind, refresh=false) {
     cams:'Caméras Bluetooth', fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
   if (kind.startsWith('assign:')) {
     const i = +kind.slice(7);
-    $('pkTitle').textContent = `Assigner F${i+1}`;
-    body.append(opts(allActionIds(), id => id === P.fkeys[i], id => getAction(id).l,
-      id => { P.fkeys[i] = id; saveP(); hidePicker(); render(); }, true));
+    $('pkTitle').textContent = `Touche F${i+1} — actuellement : ${getAction(P.fkeys[i]).l}`;
+    const ORDER = ['Caméra','Image','Outils caméra','Repères caméra','Multicam','Slate','Presets','Interface','Moniteur','—'];
+    const groups = {};
+    allActionIds().forEach(id => { const g = getAction(id).g || 'Autres'; (groups[g] = groups[g] || []).push(id); });
+    const names = Object.keys(groups).sort((a, b) => (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99));
+    names.forEach(g => {
+      const h = document.createElement('div'); h.className = 'pgrp'; h.textContent = g === '—' ? 'Aucune action' : g;
+      body.append(h, opts(groups[g], id => id === P.fkeys[i], id => getAction(id).l,
+        id => { P.fkeys[i] = id; saveP(); render(); hidePicker(); toast(`F${i+1} : ${getAction(id).l}`); }, true));
+    });
     return;
   }
   $('pkTitle').textContent = titles[kind];
@@ -1864,7 +1897,12 @@ $('pkClose').onclick = hidePicker;
 $('recBtn').onclick = () => CMD.record(!S.recording);
 $('btnAF').onclick = () => CMD.af();
 $('btnRecAll').onclick = () => recAll();
-$('fedit').onclick = () => openMenu('fkeys');
+$('fedit').onclick = () => {
+  FEDIT = !FEDIT;
+  $('fbar').classList.toggle('edit', FEDIT); $('fedit').classList.toggle('on', FEDIT);
+  $('fedit').textContent = FEDIT ? '✓' : '✎';
+  toast(FEDIT ? 'Touchez une touche pour lui choisir une action, puis ✓ pour terminer' : 'Touches enregistrées');
+};
 $('btnPresets').onclick = () => showPicker('presets');
 $('btnMenu').onclick = () => openMenu();
 $('menuClose').onclick = closeMenu;
@@ -1907,6 +1945,7 @@ document.addEventListener('keydown', e => {
     log('Mode relais : la caméra est pilotée par l\'app Pocket Monitor du Mac');
   } else {
     if (new URLSearchParams(location.search).has('demo')) connect(true);
+    else if (navigator.bluetooth?.getDevices && Object.keys(P.blePaired || {}).length) ensureHub().reconnectKnown(true);
     log('Pocket Monitor prêt' + (navigator.bluetooth ? '' : ' — Web Bluetooth indisponible dans ce navigateur'));
   }
   render();
