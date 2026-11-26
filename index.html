@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-i\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-j\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -303,7 +303,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-i';
+const APP_VERSION = '2025.11.26-j';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -440,7 +440,7 @@ const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const linkLabel = l => ({off:'Déconnectée', connecting:'Connexion…', retry:'Reconnexion…', pairing:'Appairage…', ok:'Connectée'})[l] || l;
 const connected = () => S.link === 'ok';
 
-const DEFAULT_FKEYS = ['zebra','peaking','falseColor','gridThirds','frameOff','lut','isoDown','isoUp'];
+const DEFAULT_FKEYS = ['zebra','peaking','falseColor','gridThirds','frameOff','safeArea','isoDown','isoUp'];
 const P = Object.assign({grid:false, cross:false, guide:'off', localZebra:false, zebraPct:95, histo:true,
   presets:[], fkeys:DEFAULT_FKEYS.slice(), verbose:false, autoReconnect:true},
   JSON.parse(localStorage.getItem('pm-prefs') || '{}'));
@@ -1095,8 +1095,12 @@ const ACTIONS = {
 };
 let FEDIT = false;   // mode édition des touches de fonction
 function toggleP(k){ P[k] = !P[k]; saveP(); render(); }
+/** La caméra a-t-elle déjà envoyé sa LUT d'affichage (1.15) ? Sinon (ex. Pocket 4K, LUT 3D) elle n'est pas pilotable. */
+const lutSupported = () => !!(S.seen && S.seen['1.15']);
+const AE_NAMES = ['Manuelle','Iris auto','Shutter auto','Iris + shutter','Shutter + iris'];
 /* LUT d'affichage : on garde la dernière LUT choisie (sinon « film → vidéo ») et on bascule tout de suite à l'écran. */
 function toggleLut() {
+  if (!lutSupported()) { toast('LUT non pilotable en Bluetooth sur cette caméra : activez-la sur la caméra (ou via un de ses boutons F)', 5000); return; }
   const l = S.lut > 0 ? S.lut : (P.lastLut || 2);
   const was = S.lutOn, sent = Date.now(), st = S;
   S.lut = l; S.lutOn = !S.lutOn;
@@ -1354,7 +1358,8 @@ function renderDash() {
     T('fps', 'Cadence', fmt.fps(), S.rfFlags & 4 ? `Capteur ${S.sensorFps} i/s` : 'i/s'),
     T('codec', 'Codec', fmt.codec(), fmt.res()),
     T('dr', 'Plage dyn.', S.dynRange == null ? '--' : DR[S.dynRange]),
-    T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn),
+    lutSupported() ? T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn)
+                   : T('ae', 'Expo auto', S.autoExp == null ? '--' : AE_NAMES[S.autoExp], '', !!S.autoExp),
     sec('Assistance'),
     T('focus', 'Focus', fmt.pct(S.focus), '', false, 'small'),
     T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small'),
@@ -1408,7 +1413,7 @@ function buildPicker(kind, refresh=false) {
   const sc = body.querySelector('.opts')?.scrollLeft;
   body.innerHTML = '';
   const titles = {iso:'ISO', shutter:'Obturateur', iris:'Diaphragme', wb:'Balance des blancs', focus:'Mise au point',
-    cams:'Caméras Bluetooth', fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
+    cams:'Caméras Bluetooth', ae:'Exposition automatique', fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
   if (kind.startsWith('assign:')) {
     const i = +kind.slice(7);
     $('pkTitle').textContent = `Touche F${i+1} — actuellement : ${getAction(P.fkeys[i]).l}`;
@@ -1452,6 +1457,8 @@ function buildPicker(kind, refresh=false) {
       body.append(opts(CODEC_CHOICES, ([c,v]) => c===S.codec && v===S.codecVariant, ([c,v]) => `${CODECS[c][0]} ${CODECS[c][1][v]}`, ([c,v]) => CMD.codec(c,v))); break;
     case 'dr':
       body.append(opts([0,1,2], v => v===S.dynRange, v => DR[v], v => CMD.dynRange(v))); break;
+    case 'ae':
+      body.append(opts([0,1,2,3,4], v => v===S.autoExp, v => AE_NAMES[v], v => CMD.autoExp(v))); break;
     case 'lut':
       body.append(opts([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))); break;
     case 'cams': buildCamPanel(body); break;
@@ -1653,7 +1660,15 @@ function buildPane(tab, refresh=false) {
       p.append(item('Caméra', pw));
     }
   }
-  if (tab === 'luts') {
+  if (tab === 'luts' && !lutSupported()) {
+    h('LUT 3D de la caméra');
+    camOnly('Choisir la LUT (Gen 5 Film to Video, Film to Extended Video, Rec 2020 HLG / PQ, Film Look…)');
+    camOnly('Activer la LUT à l\'écran / en HDMI');
+    camOnly('Importer une LUT 3D (.cube)');
+    camOnly('Intégrer la LUT dans les fichiers BRAW');
+    p.append(note('Le protocole Bluetooth de Blackmagic ne permet pas de choisir ni d\'activer les LUT 3D. Astuce : sur la caméra, affectez « LUT d\'affichage » à l\'un des boutons F1–F3 pour l\'activer d\'un geste.'));
+  }
+  else if (tab === 'luts') {
     h('LUT d\'affichage');
     p.append(item('LUT', seg([1,2,3], v => v===S.lut, v => LUTS[v], v => CMD.lut(v, true))));
     p.append(item('Appliquer à l\'affichage', onoff(S.lutOn, on => CMD.lut(S.lut || 2, on))));
@@ -1772,7 +1787,8 @@ function buildPane(tab, refresh=false) {
     [['Grille des tiers',1],['Croix centrale',2],['Point central',4],['Horizon',8]].forEach(([l,b]) =>
       p.append(item(l, onoff(ov[3] & b, () => setOv(3, ov[3] ^ b)))));
     h('Affichage');
-    p.append(item('LUT d\'affichage', seg([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))));
+    if (lutSupported()) p.append(item('LUT d\'affichage', seg([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))));
+    else camOnly('LUT d\'affichage (LUT 3D)');
     p.append(item('Mire de couleurs', seg([0,10,30], v => v===0 ? !S.bars : !!S.bars && v!==0 && near(S.bars, v, 15), v => v ? `${v} s` : 'Off', v => CMD.bars(v))));
     p.append(sliderItem('Luminosité écran caméra', 0, 1, 0.01, S.lcd, pct, v => CMD.lcd(v)));
     h('Tally');
