@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-j\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-k\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -303,7 +303,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-j';
+const APP_VERSION = '2025.11.26-k';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -456,8 +456,9 @@ function log(msg) {
   console.log('[PM]', msg);
 }
 
-function applyCommand({cat, param, values: v}) {
+function applyCommand({cat, param, op, values: v}) {
   PERF.pk++;
+  if (op === 1) return;   // un décalage n'est pas une valeur absolue
   const k = cat + '.' + param;
   if (P.verbose) log(`← ${k} = ${v.map(x => Math.round(x*1000)/1000).join(', ')}`);
   (S.seen = S.seen || {})[k] = {v, t: Date.now()};   // diagnostic : ce que la caméra envoie réellement
@@ -813,11 +814,16 @@ class DemoCamera {
       if (changed) { paintTc(this.id); if (this.id === ACTIVE) renderTc(); }
     }, 100);
   }
-  echo(buf) { withCam(this.id, () => parsePackets(new DataView(buf.buffer)).forEach(applyCommand)); }
+  echo(buf) {
+    const cmds = parsePackets(new DataView(buf.buffer));
+    cmds.forEach(c => { if (c.op === 0) (this.last = this.last || {})[c.cat + '.' + c.param] = buf; });
+    withCam(this.id, () => cmds.forEach(applyCommand));
+  }
   send(buf) {
     if (P.verbose) log(`→ [${camLabel(this.id)}] ` + [...buf].map(b => b.toString(16).padStart(2,'0')).join(' '));
     const [c] = parsePackets(new DataView(buf.buffer));
     if (!c) return;
+    if (c.op === 1) { const last = this.last?.[c.cat + '.' + c.param]; if (last) setTimeout(() => this.echo(last), 30); return; }
     if (c.cat===1 && c.param===3) return this.echo(packet(1,2,T.I16,enc.i16([5600,0])));
     if (c.cat===0 && c.param===1) return this.echo(packet(0,0,T.FX16,enc.fx([0.3+Math.random()*0.4])));
     if (c.cat===0 && c.param===5) return this.echo(packet(0,2,T.FX16,enc.fx([Math.log2(4*4)])));
@@ -1002,6 +1008,70 @@ const CMD = {
     toast('Horloge caméra synchronisée');
   },
 };
+/** Noms lisibles des paramètres du protocole (manuel, v1.5). */
+const PARAM_NAMES = {'0.0':'Focus','0.2':'Iris','0.6':'Stabilisation','0.8':'Zoom','1.0':'Mode vidéo','1.2':'Balance des blancs','1.7':'Plage dynamique',
+      '1.8':'Netteté','1.9':'Format d\'enregistrement','1.10':'Exposition auto','1.11':'Angle d\'obturateur','1.12':'Vitesse d\'obturateur',
+      '1.13':'Gain (dB)','1.14':'ISO','1.15':'LUT d\'affichage','1.16':'Filtre ND','2.0':'Niveau micro','2.1':'Casque','2.3':'Haut-parleur',
+      '2.4':'Entrée audio','2.5':'Niveaux d\'entrée','2.6':'Alim. fantôme','3.0':'Affichage état / repères','3.3':'Repères et grille',
+      '4.0':'Luminosité écran','4.1':'Outils (zebra, peaking, false color)','4.2':'Niveau zebra','4.3':'Niveau peaking','4.4':'Mire',
+      '4.5':'Focus assist','4.7':'Source du timecode','5.0':'Tally','5.1':'Tally avant','5.2':'Tally arrière','7.1':'Langue','7.2':'Fuseau horaire',
+      '8.0':'Lift','8.1':'Gamma','8.2':'Gain couleur','8.3':'Offset','8.4':'Contraste','8.5':'Luma mix','8.6':'Teinte / saturation',
+      '10.0':'Codec','10.1':'Transport / supports',
+      '0.3':'Iris (normalisé)','0.4':'Iris (crans)','0.7':'Zoom (mm)','1.5':'Exposition (µs)','1.6':'Exposition (crans)','2.2':'Mix casque',
+      '3.1':'Style de repères (anciens firmwares)','3.2':'Opacité des repères (anciens firmwares)','4.6':'Retour programme',
+      '6.0':'Référence (genlock)','6.1':'Décalage de référence','12.0':'Bobine','12.1':'Scène : type de plan / int-ext / jour-nuit',
+      '12.3':'Prise','12.4':'Bonne prise','12.14':'Slate pour (enreg. / lecture)'};
+
+/* Sonde : le protocole n'a pas de commande « lire ». On envoie pour chaque paramètre un DÉCALAGE DE 0
+   (opération 1 du manuel) : la valeur ne change pas, mais la caméra la renvoie si elle gère ce réglage.
+   Exclus volontairement : actions (autofocus, AWB…), enregistrement/transport (10.1), horloge (7.0),
+   langue et textes, PTZ. [clé, type, nombre de valeurs] */
+const PROBE = [
+  ['0.0',T.FX16,1],['0.2',T.FX16,1],['0.3',T.FX16,1],['0.4',T.I16,1],['0.6',T.VOID,1],['0.7',T.I16,1],['0.8',T.FX16,1],
+  ['1.0',T.I8,5],['1.2',T.I16,2],['1.5',T.I32,1],['1.6',T.I16,1],['1.7',T.I8,1],['1.8',T.I8,1],['1.9',T.I16,5],['1.10',T.I8,1],
+  ['1.11',T.I32,1],['1.12',T.I32,1],['1.13',T.I8,1],['1.14',T.I32,1],['1.15',T.I8,2],['1.16',T.FX16,1],
+  ['2.0',T.FX16,1],['2.1',T.FX16,1],['2.2',T.FX16,1],['2.3',T.FX16,1],['2.4',T.I8,1],['2.5',T.FX16,2],['2.6',T.VOID,1],
+  ['3.0',T.I16,1],['3.1',T.I8,1],['3.2',T.FX16,1],['3.3',T.I8,4],
+  ['4.0',T.FX16,1],['4.1',T.I16,1],['4.2',T.FX16,1],['4.3',T.FX16,1],['4.4',T.I8,1],['4.5',T.I8,2],['4.6',T.I8,1],['4.7',T.I8,1],
+  ['5.0',T.FX16,1],['5.1',T.FX16,1],['5.2',T.FX16,1],['6.0',T.I8,1],['6.1',T.I32,1],['7.2',T.I32,1],
+  ['8.0',T.FX16,4],['8.1',T.FX16,4],['8.2',T.FX16,4],['8.3',T.FX16,4],['8.4',T.FX16,2],['8.5',T.FX16,1],['8.6',T.FX16,2],
+  ['10.0',T.I8,2],['12.0',T.I16,1],['12.1',T.I8,3],['12.3',T.I8,2],['12.4',T.VOID,1],['12.14',T.I8,1],
+];
+let PROBE_RESULT = null, PROBING = false;
+async function probeCamera(id = ACTIVE) {
+  if (PROBING) return;
+  if (id == null || !camOk(id)) return toast('Caméra non connectée');
+  const st = CAMS.get(id).state;
+  if (st.recording && !confirm('La caméra enregistre. Sonder quand même ?')) return;
+  PROBING = true; hidePicker(); closeMenu();
+  const start = Date.now(), size = {[T.VOID]:1, [T.I8]:1, [T.I16]:2, [T.I32]:4, [T.FX16]:2};
+  toast(`Sondage de ${camLabel(id)} : ${PROBE.length} paramètres…`, 6000);
+  log(`Sondage de ${camLabel(id)} (décalage 0 sur ${PROBE.length} paramètres)`);
+  for (const [k, type, n] of PROBE) {
+    const [c, pr] = k.split('.').map(Number);
+    withTargets([id], () => send(packet(c, pr, type, new Uint8Array(size[type] * n), 1)));
+    await sleep(40);
+  }
+  await sleep(2500);   // laisse le temps aux réponses d'arriver
+  const seen = st.seen || {};
+  const fmtV = v => (v || []).map(x => typeof x === 'number' ? Math.round(x * 1000) / 1000 : x).join(', ');
+  const rows = PROBE.map(([k]) => ({k, status: (seen[k]?.t || 0) >= start ? 'ok' : seen[k] ? 'init' : 'none', v: fmtV(seen[k]?.v)}));
+  Object.keys(seen).filter(k => !PROBE.some(([q]) => q === k)).forEach(k => rows.push({k, status: 'init', v: fmtV(seen[k].v)}));
+  PROBE_RESULT = {id, label: camLabel(id), name: st.name, protocol: st.protocol, when: new Date().toLocaleString(), rows};
+  PROBING = false;
+  const n = st => rows.filter(r => r.status === st).length;
+  log(`Sondage terminé : ${n('ok')} répondent, ${n('init')} envoyés seulement à la connexion, ${n('none')} sans réponse`);
+  showPicker('probe');
+}
+function probeReport() {
+  const R = PROBE_RESULT; if (!R) return '';
+  const sec = (title, st) => {
+    const list = R.rows.filter(r => r.status === st);
+    return list.length ? `${title} (${list.length})\n` + list.map(r => `  ${r.k.padEnd(6)} ${(PARAM_NAMES[r.k] || '?').padEnd(34)} ${r.v}`).join('\n') + '\n' : '';
+  };
+  return `Pocket Monitor ${APP_VERSION} — sondage de ${R.label} (${R.name}, protocole ${R.protocol ?? '?'}) — ${R.when}\n\n` +
+    sec('RÉPOND À LA REQUÊTE', 'ok') + '\n' + sec('ENVOYÉ À LA CONNEXION SEULEMENT', 'init') + '\n' + sec('PAS DE RÉPONSE', 'none');
+}
 const toggleTool = bit => { S.tools = (S.tools||0) ^ bit; CMD.tools(S.tools); render(); };
 
 /* =====================================================================
@@ -1413,7 +1483,7 @@ function buildPicker(kind, refresh=false) {
   const sc = body.querySelector('.opts')?.scrollLeft;
   body.innerHTML = '';
   const titles = {iso:'ISO', shutter:'Obturateur', iris:'Diaphragme', wb:'Balance des blancs', focus:'Mise au point',
-    cams:'Caméras Bluetooth', ae:'Exposition automatique', fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
+    cams:'Caméras Bluetooth', probe:'Rapport de sondage', ae:'Exposition automatique', fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
   if (kind.startsWith('assign:')) {
     const i = +kind.slice(7);
     $('pkTitle').textContent = `Touche F${i+1} — actuellement : ${getAction(P.fkeys[i]).l}`;
@@ -1457,6 +1527,23 @@ function buildPicker(kind, refresh=false) {
       body.append(opts(CODEC_CHOICES, ([c,v]) => c===S.codec && v===S.codecVariant, ([c,v]) => `${CODECS[c][0]} ${CODECS[c][1][v]}`, ([c,v]) => CMD.codec(c,v))); break;
     case 'dr':
       body.append(opts([0,1,2], v => v===S.dynRange, v => DR[v], v => CMD.dynRange(v))); break;
+    case 'probe': {
+      const R = PROBE_RESULT;
+      if (!R) { body.append(note('Aucun sondage pour l\'instant.')); break; }
+      $('pkTitle').textContent = `Sondage — ${R.label} — ${R.when}`;
+      const cnt = st => R.rows.filter(r => r.status === st).length;
+      body.append(note(`${cnt('ok')} réglages répondent · ${cnt('init')} envoyés seulement à la connexion · ${cnt('none')} sans réponse (probablement non gérés)`));
+      const ta = document.createElement('textarea');
+      ta.readOnly = true; ta.value = probeReport();
+      ta.style.cssText = 'width:100%;height:46vh;background:#0a0a0a;color:#ccc;border:1px solid #2a2a2a;border-radius:8px;font:12px/1.45 ui-monospace,Menlo,monospace;padding:10px;margin-top:8px';
+      body.append(ta);
+      body.append(rowButtons([
+        ['Copier le rapport', () => { ta.select(); (navigator.clipboard?.writeText(ta.value) || Promise.reject()).then(() => toast('Rapport copié'), () => { document.execCommand?.('copy'); toast('Rapport sélectionné : utilisez Copier'); }); }, 'primary'],
+        ['Relancer', () => probeCamera(R.id)],
+      ]));
+      body.append(note('« Pas de réponse » veut dire que la caméra n\'a pas renvoyé la valeur : le plus souvent, elle ne gère pas ce réglage. Le sondage ne modifie aucun réglage (décalage de 0).'));
+      break;
+    }
     case 'ae':
       body.append(opts([0,1,2,3,4], v => v===S.autoExp, v => AE_NAMES[v], v => CMD.autoExp(v))); break;
     case 'lut':
@@ -1875,15 +1962,14 @@ function buildPane(tab, refresh=false) {
     p.append(item('Compteur de performance', onoff(P.perf, v => { P.perf = v; saveP(); })));
     p.append(item('Journal détaillé (paquets)', onoff(P.verbose, v => { P.verbose = v; saveP(); render(); })));
     if (S.link === 'ok') p.append(item('Alimentation', Object.assign(document.createElement('button'), {className:'big danger', textContent:'Éteindre la caméra', onclick: () => confirm('Éteindre la caméra ?') && cam.powerOff()})));
+    h('Sonder la caméra');
+    p.append(note('Interroge la caméra active sur tous les réglages du protocole et liste ceux qu\'elle gère réellement. Aucun réglage n\'est modifié.'));
+    p.append(rowButtons([
+      [PROBING ? 'Sondage en cours…' : `Sonder ${CAMS.size ? camLabel(ACTIVE) : 'la caméra'}`, () => probeCamera(), 'primary'],
+      ...(PROBE_RESULT ? [['Voir le dernier rapport', () => { closeMenu(); showPicker('probe'); }]] : []),
+    ]));
     h(`Réglages envoyés par ${CAMS.size ? camLabel(ACTIVE) : 'la caméra'}`);
-    const NAMES = {'0.0':'Focus','0.2':'Iris','0.6':'Stabilisation','0.8':'Zoom','1.0':'Mode vidéo','1.2':'Balance des blancs','1.7':'Plage dynamique',
-      '1.8':'Netteté','1.9':'Format d\'enregistrement','1.10':'Exposition auto','1.11':'Angle d\'obturateur','1.12':'Vitesse d\'obturateur',
-      '1.13':'Gain (dB)','1.14':'ISO','1.15':'LUT d\'affichage','1.16':'Filtre ND','2.0':'Niveau micro','2.1':'Casque','2.3':'Haut-parleur',
-      '2.4':'Entrée audio','2.5':'Niveaux d\'entrée','2.6':'Alim. fantôme','3.0':'Affichage état / repères','3.3':'Repères et grille',
-      '4.0':'Luminosité écran','4.1':'Outils (zebra, peaking, false color)','4.2':'Niveau zebra','4.3':'Niveau peaking','4.4':'Mire',
-      '4.5':'Focus assist','4.7':'Source du timecode','5.0':'Tally','5.1':'Tally avant','5.2':'Tally arrière','7.1':'Langue','7.2':'Fuseau horaire',
-      '8.0':'Lift','8.1':'Gamma','8.2':'Gain couleur','8.3':'Offset','8.4':'Contraste','8.5':'Luma mix','8.6':'Teinte / saturation',
-      '10.0':'Codec','10.1':'Transport / supports'};
+    const NAMES = PARAM_NAMES;
     const seen = S.seen || {};
     const keys = Object.keys(seen).sort((a, b) => { const [x1, y1] = a.split('.').map(Number), [x2, y2] = b.split('.').map(Number); return x1 - x2 || y1 - y2; });
     if (!keys.length) p.append(note('Aucun réglage reçu pour l\'instant.'));
