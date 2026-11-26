@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-f\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-g\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -193,51 +193,70 @@
   .big{padding:10px 16px;border-radius:8px;border:1px solid #444;background:#1e1e1e;font-size:14px}
   .big.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
   .big.danger{border-color:#7a2a2a;color:#ff8a80}
+
+  /* ================= Mise en page épurée ================= */
+  #app{grid-template-rows:auto 1fr auto;grid-template-columns:1fr auto}
+  #hdr{grid-column:1/3;grid-row:1;display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0b0b0b;border-bottom:1px solid #1c1c1c;min-height:60px}
+  #camstrip{grid-column:auto;display:flex;flex:1 1 auto;min-width:0;padding:0;background:none;border:0;gap:6px;overflow-x:auto}
+  .chip.empty{color:var(--dim);border-style:dashed}
+  #tcbox{flex:0 0 auto;font-size:24px;font-variant-numeric:tabular-nums;letter-spacing:.02em;padding:0 10px;display:flex;align-items:center}
+  #tcbox.rec{color:var(--rec)}
+  .hbtns{display:flex;gap:6px;flex:0 0 auto}
+  .hbtn{padding:10px 14px;border-radius:10px;background:#181818;border:1px solid #282828;font-size:14px;white-space:nowrap}
+  .hbtn.on{border-color:#2e5b38;color:#9fd8ad} .hbtn.warn{border-color:var(--warn);color:var(--warn)}
+  #view{grid-column:1/2;grid-row:2;padding:16px;align-items:flex-start;overflow:auto}
+  #view.rec{box-shadow:inset 0 0 0 3px var(--rec)}
+  #side{grid-column:2/3;grid-row:2;width:104px;border-left:1px solid #1c1c1c;background:#0b0b0b;justify-content:center;gap:12px;padding:14px 10px}
+  #side .sbtn{width:78px}
+  #recBtn{margin:0}
+  .rlab{font-size:10px;letter-spacing:.18em;color:#777;margin-top:-6px}
+  #btnRecAll{font-size:11px;color:#ff8a80;border-color:#4a2222}
+  #btnRecAll.on{background:var(--rec);color:#fff;border-color:var(--rec)}
+  #fbar{grid-column:1/3;grid-row:3;display:flex;gap:6px;padding:8px 12px;background:#0b0b0b;border-top:1px solid #1c1c1c}
+  #fkeys{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+  .fkey{flex:1 0 78px;min-height:52px;border-radius:10px;background:#161616;border:1px solid #242424;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;letter-spacing:.04em;padding:4px;width:auto}
+  .fkey small{font-size:9px;color:#666;letter-spacing:.14em}
+  .fkey.on{border-color:var(--acc);color:var(--acc)} .fkey.on small{color:var(--acc)}
+  #fedit{flex:0 0 46px;border-radius:10px;background:#101010;border:1px dashed #333;color:#888;font-size:18px}
+  #dash{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;max-width:1200px;margin:0 auto}
+  .dsec{grid-column:1/-1;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#5a5a5a;margin:8px 2px -2px}
+  .dsec:first-child{margin-top:0}
+  .tile{background:#141414;border:1px solid #1e1e1e;border-radius:14px;padding:14px 16px;min-height:104px;gap:4px}
+  .tile .lab{font-size:11px;letter-spacing:.12em;color:#7a7a7a}
+  .tile .val{font-size:34px;font-weight:600}
+  .tile .sub{font-size:12px;color:#777;min-height:14px}
+  .tile.small{min-height:74px;padding:12px 16px} .tile.small .val{font-size:20px}
+  .tile.on{border-color:rgba(255,176,0,.5)} .tile.on .val{color:var(--acc)}
+  #picker{left:var(--sl);right:calc(104px + var(--sr))}
+  @media (max-width:900px){ #dash{grid-template-columns:repeat(2,minmax(0,1fr))} #tcbox{font-size:18px} .hbtn{padding:9px 10px} }
 </style>
 </head>
 <body>
 <div id="app">
-  <!-- Touches de fonction -->
-  <div id="fcol"></div>
+  <!-- En-tête : caméras · timecode · actions -->
+  <header id="hdr">
+    <div id="camstrip"></div>
+    <div id="tcbox"><span class="dot" id="recDot"></span><span id="tcTxt">00:00:00:00</span></div>
+    <div class="hbtns">
+      <button class="hbtn" id="btnConnect">Connecter</button>
+      <button class="hbtn" id="btnPresets">Presets</button>
+      <button class="hbtn" id="btnMenu">Menu</button>
+    </div>
+  </header>
 
-  <!-- Bandeau supérieur -->
-  <div id="camstrip"></div>
-  <div id="top" class="bar">
-    <button class="cell tap" data-pick="fps"><span class="lab">FPS</span><span class="val" id="vFps">--</span></button>
-    <button class="cell tap" data-pick="shutter"><span class="lab" id="lShutter">Shutter</span><span class="val" id="vShutter">--</span></button>
-    <button class="cell tap" data-pick="iris"><span class="lab">Iris</span><span class="val" id="vIris">--</span></button>
-    <div class="cell grow"><span id="tc"><span class="dot" id="recDot"></span><span id="tcTxt">00:00:00:00</span></span></div>
-    <button class="cell tap" data-pick="lut"><span class="lab">LUT</span><span class="val" id="vLut" style="font-size:15px">--</span></button>
-    <button class="cell tap right" data-pick="codec"><span class="lab" id="lRes">--</span><span class="val" id="vCodec">--</span></button>
-  </div>
+  <!-- Réglages -->
+  <main id="view"><div id="dash"></div></main>
 
-  <!-- Image -->
-  <div id="view">
-    <div id="dash"></div>
-  </div>
-
-  <!-- Bandeau inférieur -->
-  <div id="bottom" class="bar">
-    <button class="cell tap" data-pick="iso"><span class="lab">ISO</span><span class="val" id="vIso">--</span></button>
-    <button class="cell tap" data-pick="wb"><span class="lab">WB</span><span class="val" id="vWb">--</span></button>
-    <button class="cell tap" data-pick="wb"><span class="lab">Tint</span><span class="val" id="vTint">--</span></button>
-    <button class="cell tap" data-pick="focus"><span class="lab">Focus</span><span class="val" id="vFocus">--</span></button>
-    <button class="cell tap" data-pick="dr"><span class="lab">Dyn. range</span><span class="val" id="vDr">--</span></button>
-    <div class="cell"><span class="lab">Outils</span><span class="val" id="vTools" style="font-size:13px">—</span></div>
-    <div class="cell right"><span class="lab">Caméra</span><span class="val" id="vName" style="font-size:14px">—</span></div>
-  </div>
-
-  <!-- Colonne de droite -->
-  <div id="side">
-    <button class="sbtn" id="btnConnect">BLE</button>
-    <div id="conn">Déconnecté</div>
-    <button class="sbtn" id="btnAF">AF</button>
-    <button class="sbtn" id="btnIris">IRIS<br>AUTO</button>
-    <button class="sbtn" id="btnAWB">WB<br>AUTO</button>
+  <!-- Enregistrement -->
+  <aside id="side">
     <button id="recBtn" title="Enregistrer (Espace)"><i></i></button>
-    <button class="sbtn" id="btnPresets">PRESETS</button>
-    <button class="sbtn" id="btnMenu">MENU</button>
-  </div>
+    <span class="rlab">REC</span>
+    <button class="sbtn" id="btnRecAll">REC<br>TOUTES</button>
+    <button class="sbtn" id="btnAF">AF</button>
+  </aside>
+
+  <!-- Touches de fonction -->
+  <footer id="fbar"><div id="fkeys"></div><button id="fedit" title="Affecter les touches">✎</button></footer>
 </div>
 
 <div id="picker"><h3><span id="pkTitle"></span><button id="pkClose">OK</button></h3><div id="pkBody"></div></div>
@@ -277,7 +296,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-f';
+const APP_VERSION = '2025.11.26-g';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -414,7 +433,7 @@ const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const linkLabel = l => ({off:'Déconnectée', connecting:'Connexion…', retry:'Reconnexion…', pairing:'Appairage…', ok:'Connectée'})[l] || l;
 const connected = () => S.link === 'ok';
 
-const DEFAULT_FKEYS = ['zebra','peaking','falseColor','lut','af','awb','isoDown','isoUp'];
+const DEFAULT_FKEYS = ['zebra','peaking','falseColor','gridThirds','frameOff','lut','isoDown','isoUp'];
 const P = Object.assign({grid:false, cross:false, guide:'off', localZebra:false, zebraPct:95, histo:true,
   presets:[], fkeys:DEFAULT_FKEYS.slice(), verbose:false, autoReconnect:true},
   JSON.parse(localStorage.getItem('pm-prefs') || '{}'));
@@ -964,7 +983,7 @@ const CMD = {
     toast('Horloge caméra synchronisée');
   },
 };
-const toggleTool = bit => CMD.tools((S.tools||0) ^ bit);
+const toggleTool = bit => { S.tools = (S.tools||0) ^ bit; CMD.tools(S.tools); render(); };
 
 /* =====================================================================
    LISTES DE VALEURS
@@ -1031,6 +1050,24 @@ const ACTIONS = {
   focusNear: {l:'Focus proche', s:'FOC −', g:'Image', run:()=>S.focus!=null&&CMD.focus(S.focus-0.02)},
   focusFar:  {l:'Focus lointain', s:'FOC +', g:'Image', run:()=>S.focus!=null&&CMD.focus(S.focus+0.02)},
   presets:   {l:'Ouvrir les presets', s:'PRESETS', g:'Interface', run:()=>showPicker('presets')},
+  gridThirds:{l:'Grille des tiers (caméra)', s:'GRILLE', g:'Repères caméra', run:()=>toggleGrid(1), on:()=>!!(ov()[3]&1)},
+  crosshair: {l:'Croix centrale (caméra)', s:'CROIX', g:'Repères caméra', run:()=>toggleGrid(2), on:()=>!!(ov()[3]&2)},
+  centerDot: {l:'Point central (caméra)', s:'POINT', g:'Repères caméra', run:()=>toggleGrid(4), on:()=>!!(ov()[3]&4)},
+  horizon:   {l:'Horizon (caméra)', s:'HORIZON', g:'Repères caméra', run:()=>toggleGrid(8), on:()=>!!(ov()[3]&8)},
+  frameNext: {l:'Repère de cadre suivant (caméra)', s:'CADRE', g:'Repères caméra', run:()=>{ const n=(ov()[0]+1)%FG_STYLES.length; setOverlay(0,n); toast('Repère : '+FG_STYLES[n]); }, on:()=>ov()[0]>0},
+  frameOff:  {l:'Repère de cadre on/off (caméra)', s:'CADRE ⏻', g:'Repères caméra', run:()=>{ const c=ov()[0]; if (c) { P.lastFrame=c; saveP(); setOverlay(0,0); } else setOverlay(0,P.lastFrame||2); }, on:()=>ov()[0]>0},
+  frameOpac: {l:'Opacité des repères (cycle)', s:'OPACITÉ', g:'Repères caméra', run:()=>{ const v=cycle([25,50,75,100],ov()[1]); setOverlay(1,v); toast('Opacité '+v+'%'); }},
+  safeArea:  {l:'Zone de sécurité 90 % (caméra)', s:'SAFE', g:'Repères caméra', run:()=>setOverlay(2, ov()[2] ? 0 : 90), on:()=>ov()[2]>0},
+  statusText:{l:'Texte d\'état à l\'écran (caméra)', s:'STATUT', g:'Repères caméra', run:()=>{ S.overlayEn = (S.overlayEn ?? 3) ^ 1; CMD.overlayEn(S.overlayEn); render(); }, on:()=>!!((S.overlayEn ?? 3)&1)},
+  guidesShow:{l:'Afficher les repères (caméra)', s:'REPÈRES', g:'Repères caméra', run:()=>{ S.overlayEn = (S.overlayEn ?? 3) ^ 2; CMD.overlayEn(S.overlayEn); render(); }, on:()=>!!((S.overlayEn ?? 3)&2)},
+  zebraLvl:  {l:'Niveau de zebra (cycle)', s:'ZEB %', g:'Outils caméra', run:()=>{ const v=cycle([0.75,0.8,0.85,0.9,0.95,1],Math.round((S.zebraLevel??0.95)*100)/100); CMD.zebraLvl(v); toast('Zebra '+Math.round(v*100)+'%'); }},
+  faColor:   {l:'Couleur du focus assist (cycle)', s:'FA COUL.', g:'Outils caméra', run:()=>{ const c=((S.focusColor??0)+1)%FA_COLORS.length; CMD.focusAssist(S.focusMethod??0,c); toast('Focus assist : '+FA_COLORS[c]); }},
+  ois:       {l:'Stabilisation objectif on/off', s:'STAB', g:'Image', run:()=>CMD.ois(!S.ois), on:()=>!!S.ois},
+  aeNext:    {l:'Mode d\'exposition auto (cycle)', s:'AE', g:'Image', run:()=>{ const m=((S.autoExp??0)+1)%5; CMD.autoExp(m); toast(['Exposition manuelle','Iris auto','Shutter auto','Iris + shutter auto','Shutter + iris auto'][m]); }, on:()=>!!S.autoExp},
+  shutMode:  {l:'Obturateur : angle / vitesse', s:'° / 1/x', g:'Image', run:()=>{ S.shutterMode = S.shutterMode==='angle' ? 'speed' : 'angle'; render(); }},
+  barsOn:    {l:'Mire de couleurs 30 s', s:'MIRE', g:'Outils caméra', run:()=>CMD.bars(S.bars?0:30), on:()=>!!S.bars},
+  lcdDim:    {l:'Écran caméra : luminosité (cycle)', s:'LCD', g:'Outils caméra', run:()=>{ const v=cycle([0.25,0.5,0.75,1],Math.round((S.lcd??1)*4)/4); CMD.lcd(v); toast('Écran caméra '+Math.round(v*100)+'%'); }},
+  camPanel:  {l:'Panneau caméras Bluetooth', s:'CAMÉRAS', g:'Interface', run:()=>openCamPanel()},
   recAll:    {l:'REC / stop toutes les caméras', s:'REC ALL', g:'Multicam', run:()=>recAll(), on:()=>okIds().some(id=>CAMS.get(id).state.recording)},
   linked:    {l:'Commandes liées on/off', s:'LIEN', g:'Multicam', run:()=>toggleP('linked'), on:()=>!!P.linked},
   camNext:   {l:'Caméra suivante', s:'CAM ▶', g:'Multicam', run:()=>cycleCam(1)},
@@ -1038,6 +1075,11 @@ const ACTIONS = {
   menu:      {l:'Ouvrir le menu', s:'MENU', g:'Interface', run:()=>openMenu()},
 };
 function toggleP(k){ P[k] = !P[k]; saveP(); render(); }
+/* Repères / grille de la caméra (3.3) : [style de cadre, opacité %, zone de sécurité %, grille (bits)] */
+const ov = () => S.overlay || [0, 100, 0, 0];
+function setOverlay(i, v) { const o = ov().slice(); o[i] = v; S.overlay = o; CMD.overlay(o); render(); }   // mise à jour immédiate : plusieurs touches de suite se cumulent
+function toggleGrid(bit) { setOverlay(3, ov()[3] ^ bit); }
+function cycle(list, cur) { const i = list.indexOf(cur); return list[(i + 1) % list.length]; }
 function shutterStep(d){
   if (S.shutterMode==='angle') { const v=step(ANGLES,S.shutterAngle,d); v&&CMD.angle(v); }
   else { const v=step(SPEEDS,S.shutterSpeed,d); v&&CMD.speed(v); }
@@ -1154,7 +1196,7 @@ const fmt = {
   },
   pct: v => v==null ? '--' : Math.round(v*100)+'%',
 };
-function renderTc(){ $('tcTxt').textContent = S.tc; $('tc').classList.toggle('rec', S.recording); }
+function renderTc(){ $('tcTxt').textContent = S.tc; $('tcbox').classList.toggle('rec', S.recording); }
 
 let rTimer = null;
 /* Rendu : au plus ~12 fois/s ; le menu et les sélecteurs ne sont reconstruits qu'au plus 2,5 fois/s
@@ -1181,32 +1223,22 @@ setInterval(() => {
 function render(){ if (!rTimer) rTimer = setTimeout(() => { rTimer = null; doRender(); }, 80); }
 function doRender() {
   PERF.rd++;
-  $('vFps').textContent = fmt.fps();
-  $('lShutter').textContent = S.shutterMode==='angle' ? 'Shutter' : 'Speed';
-  $('vShutter').textContent = fmt.shutter();
-  $('vIris').textContent = fmt.iris();
-  $('vCodec').textContent = fmt.codec();
-  $('lRes').textContent = fmt.res();
-  $('vLut').textContent = S.lut==null ? '--' : (S.lutOn ? LUTS[S.lut] ?? S.lut : 'Off');
-  $('vIso').textContent = S.iso ?? '--';
-  $('vWb').textContent = S.wbK==null ? '--' : S.wbK + 'K';
-  $('vTint').textContent = S.tint==null ? '--' : (S.tint>0?'+':'') + S.tint;
-  $('vFocus').textContent = fmt.pct(S.focus);
-  $('vDr').textContent = S.dynRange==null ? '--' : DR[S.dynRange] ?? S.dynRange;
-  setHTML($('vTools'), [['ZEB',1],['PEAK',2],['FC',4]].map(([n,b]) => `<span class="badge ${S.tools&b?'on':''}">${n}</span>`).join(''));
-  const nt = targets().length;
-  $('vName').textContent = CAMS.size > 1 ? `${camLabel(ACTIVE)}${nt > 1 ? `  → ${nt} cam.` : ''}` : S.name;
   $('recDot').classList.toggle('rec', S.recording);
   $('recBtn').classList.toggle('rec', S.recording);
   $('view').classList.toggle('rec', S.recording);
-  const lt = {off:'Déconnecté', connecting:'Connexion…', retry:'Reconnexion…', pairing:'Appairage…', ok: S.demo ? 'Démo' : 'Connecté'}[S.link];
-  $('conn').textContent = lt;
-  $('conn').className = S.link==='ok' ? 'ok' : S.link==='off' ? '' : 'retry';
-  if (cam instanceof BleHub) {
+  $('btnRecAll').style.display = CAMS.size > 1 ? '' : 'none';
+  $('btnRecAll').classList.toggle('on', okIds().some(id => CAMS.get(id).state.recording));
+  // bouton de connexion de l'en-tête
+  const bc = $('btnConnect'), nOk = okIds().length;
+  let txt = 'Connecter', cls = '';
+  if (RELAY) { txt = `Mac · ${nOk}/${CAMS.size}`; cls = nOk ? 'on' : ''; }
+  else if (cam instanceof DemoHub) { txt = 'Démo'; cls = 'on'; }
+  else if (cam instanceof BleHub) {
     const n = cam.attention();
-    setHTML($('btnConnect'), n ? `BLE<small>${n} à appairer</small>` : 'BLE');
-    $('btnConnect').classList.toggle('on', okIds().length > 0);
-  } else { setHTML($('btnConnect'), 'BLE'); $('btnConnect').classList.toggle('on', S.link==='ok'); }
+    txt = n ? `Caméras · ${n} à appairer` : `Caméras · ${nOk}/${CAMS.size}`;
+    cls = n ? 'warn' : nOk ? 'on' : '';
+  }
+  setHTML(bc, txt); bc.className = 'hbtn ' + cls;
   renderTc(); renderDash(); renderFkeys(); renderStrip();
   const menuOpen = $('menu').classList.contains('open');
   if (openPicker || menuOpen) {
@@ -1222,12 +1254,12 @@ function doRender() {
   }
 }
 function renderFkeys() {
-  const col = $('fcol');
+  const col = $('fkeys');
   if (col.childElementCount !== P.fkeys.length) {
     col.innerHTML = '';
     P.fkeys.forEach((_, i) => {
       const b = document.createElement('button');
-      b.className = 'sbtn fkey'; b.dataset.i = i;
+      b.className = 'fkey'; b.dataset.i = i;
       b.title = `F${i+1} — appui long ou clic droit pour assigner`;
       let t, long = false;
       b.onpointerdown = () => { long = false; t = setTimeout(() => { long = true; showPicker('assign:'+i); }, 550); };
@@ -1245,26 +1277,20 @@ function renderFkeys() {
 }
 function renderStrip() {
   const el = $('camstrip');
-  const show = CAMS.size > 1 || ((RELAY || cam instanceof BleHub) && CAMS.size > 0);
-  el.style.display = show ? 'flex' : 'none';
-  if (!show) return;
-  const g = groupIds();
+  if (!CAMS.size) {
+    setHTML(el, `<button class="chip empty" data-x="add"><span class="cl"><b>Aucune caméra</b><small>Toucher pour connecter</small></span></button>`);
+    return;
+  }
+  const g = groupIds(), multi = CAMS.size > 1;
   const chips = [...CAMS.values()].sort((a, b) => a.id - b.id).map(c => {
     const s = c.state, lk = s.link === 'ok' ? 'ok' : s.link === 'off' ? 'off' : 'wait';
-    const sub = s.link === 'ok'
-      ? withCam(c.id, () => `ISO ${s.iso ?? '--'} · ${fmt.shutter()} · ${fmt.iris()} · ${s.wbK ?? '--'}K`)
-      : linkLabel(s.link);
+    const sub = s.link === 'ok' ? withCam(c.id, () => `ISO ${s.iso ?? '--'} · ${fmt.shutter()} · ${fmt.iris()}`) : linkLabel(s.link);
     return `<button class="chip${c.id === ACTIVE ? ' act' : ''}${g.includes(c.id) ? ' grp' : ''}${s.recording ? ' rec' : ''}" data-id="${c.id}">
-      <span class="ln" data-grp="${c.id}" title="Ajouter / retirer du groupe lié">${g.includes(c.id) ? '🔗' : '○'}</span>
-      <span class="cl"><b><i class="d ${lk}"></i>${esc(c.label)}</b><small>${esc(sub)}</small></span>
-      <span class="ctc" data-tc="${c.id}">${s.tc}</span></button>`;
+      ${multi ? `<span class="ln" data-grp="${c.id}" title="Ajouter / retirer du groupe lié">${g.includes(c.id) ? '🔗' : '○'}</span>` : ''}
+      <span class="cl"><b><i class="d ${lk}"></i>${esc(c.label)}</b><small>${esc(sub)}</small></span></button>`;
   }).join('');
   const nLinked = g.filter(camOk).length;
-  setHTML(el, chips + `<span class="sp"></span>
-    <button class="chipbtn${P.linked ? ' on' : ''}" data-x="link" title="Les réglages s'appliquent à toutes les caméras du groupe 🔗">🔗 Lier : ${P.linked ? nLinked + ' cam.' : 'off'}</button>
-    <button class="chipbtn" data-x="all">Tout lier</button>
-    ${cam instanceof BleHub ? `<button class="chipbtn${cam.attention() ? ' on' : ''}" data-x="add">Caméras${cam.attention() ? ' • ' + cam.attention() + ' à appairer' : ''}</button>` : ''}
-    <button class="chipbtn recall${okIds().some(id => CAMS.get(id).state.recording) ? ' on' : ''}" data-x="rec">● REC toutes</button>`);
+  setHTML(el, chips + (multi ? `<button class="chipbtn${P.linked ? ' on' : ''}" data-x="link" title="Les réglages s'appliquent à toutes les caméras 🔗">🔗 ${P.linked ? nLinked + ' liées' : 'Lier'}</button>` : ''));
 }
 $id('camstrip').addEventListener('click', e => {
   const grp = e.target.closest('[data-grp]');
@@ -1273,30 +1299,32 @@ $id('camstrip').addEventListener('click', e => {
   if (x === 'link') return toggleP('linked');
   if (x === 'all') { P.group = [...CAMS.keys()]; P.linked = true; saveP(); render(); return toast('Toutes les caméras sont liées'); }
   if (x === 'rec') return recAll();
-  if (x === 'add') return openCamPanel();
+  if (x === 'add') return RELAY ? (cam.cmd('scan'), toast('Recherche lancée sur le Mac')) : openCamPanel();
   const chip = e.target.closest('.chip');
   if (chip) setActive(+chip.dataset.id);
 });
 
 function renderDash() {
-  const T = (pick, lab, val, sub='', on=false, wide=false) =>
-    `<button class="tile${on?' on':''}${wide?' wide':''}" ${pick ? `data-pick="${pick}"` : `data-act="${lab}"`}><span class="lab">${lab}</span><span class="val">${val}</span><span class="sub">${sub}</span></button>`;
-  const A = S.audio;
+  const T = (pick, lab, val, sub = '', on = false, cls = '') =>
+    `<button class="tile${on ? ' on' : ''}${cls ? ' ' + cls : ''}" ${pick ? `data-pick="${pick}"` : `data-act="${lab}"`}><span class="lab">${lab}</span><span class="val">${esc(val)}</span><span class="sub">${esc(sub)}</span></button>`;
+  const sec = t => `<div class="dsec">${t}</div>`;
+  const ae = ['','Iris auto','Shutter auto','Iris + shutter auto','Shutter + iris auto'][S.autoExp || 0];
   setHTML($('dash'), [
+    sec('Exposition'),
     T('iso', 'ISO', S.iso ?? '--', S.gainDb != null ? `${S.gainDb > 0 ? '+' : ''}${S.gainDb} dB` : ''),
-    T('shutter', S.shutterMode==='angle' ? 'Obturateur' : 'Vitesse', fmt.shutter(), S.autoExp ? 'Expo auto' : 'Manuel'),
+    T('shutter', S.shutterMode === 'angle' ? 'Obturateur' : 'Vitesse', fmt.shutter(), ae),
     T('iris', 'Iris', fmt.iris()),
-    T('wb', 'Balance', S.wbK==null ? '--' : S.wbK+'K', S.tint==null ? '' : `Tint ${(S.tint>0?'+':'') + S.tint}`),
-    T('fps', 'Cadence', fmt.fps(), S.rfFlags & 4 ? `Off speed ${S.sensorFps} i/s` : 'i/s'),
-    T('codec', 'Codec', fmt.codec(), fmt.res(), false, true),
-    T('focus', 'Focus', fmt.pct(S.focus), 'Toucher pour régler'),
-    T('dr', 'Plage dyn.', S.dynRange==null ? '--' : DR[S.dynRange]),
-    T('lut', 'LUT', S.lut==null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn),
-    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', S.zebraLevel != null ? Math.round(S.zebraLevel*100)+'%' : '', !!(S.tools & 1)),
-    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', '', !!(S.tools & 2)),
-    T('', 'False color', S.tools & 4 ? 'On' : 'Off', '', !!(S.tools & 4)),
-    T('', 'Audio', A.input==null ? '--' : AUDIO_IN[A.input], A.phantom ? '48V activé' : '', !!A.phantom, true),
-    T('', 'Slate', S.slate.scene ? `Sc ${S.slate.scene} · P${S.slate.take ?? '-'}` : (S.slate.take ? `Prise ${S.slate.take}` : '--'), S.slate.project || '', false, true),
+    T('wb', 'Balance', S.wbK == null ? '--' : S.wbK + 'K', S.tint ? `Tint ${(S.tint > 0 ? '+' : '') + S.tint}` : ''),
+    sec('Format'),
+    T('fps', 'Cadence', fmt.fps(), S.rfFlags & 4 ? `Capteur ${S.sensorFps} i/s` : 'i/s'),
+    T('codec', 'Codec', fmt.codec(), fmt.res()),
+    T('dr', 'Plage dyn.', S.dynRange == null ? '--' : DR[S.dynRange]),
+    T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn),
+    sec('Assistance'),
+    T('focus', 'Focus', fmt.pct(S.focus), '', false, 'small'),
+    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small'),
+    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', '', !!(S.tools & 2), 'small'),
+    T('', 'False color', S.tools & 4 ? 'On' : 'Off', '', !!(S.tools & 4), 'small'),
   ].join(''));
 }
 $id('dash').addEventListener('click', e => {
@@ -1783,7 +1811,7 @@ function buildPane(tab, refresh=false) {
     else if (cam instanceof BleHub) mk('Gérer les caméras Bluetooth', () => openCamPanel(), 'sel');
     else if (S.link !== 'off') mk('Déconnecter', () => { cam?.disconnect(); onDisconnected(); });
     else { mk('Caméras Bluetooth', () => openCamPanel(), 'sel'); mk('Mode démo', () => connect(true)); }
-    p.append(item(`État : ${$('conn').textContent}${S.link==='ok' ? ' — ' + S.name : ''}`, actions));
+    p.append(item(`État : ${linkLabel(S.link)}${S.link==='ok' ? ' — ' + S.name : ''}`, actions));
     p.append(item('Reconnexion automatique', onoff(P.autoReconnect, v => { P.autoReconnect = v; saveP(); render(); })));
     p.append(item('Version de la page', span(APP_VERSION)));
     p.append(item('Compteur de performance', onoff(P.perf, v => { P.perf = v; saveP(); })));
@@ -1835,8 +1863,8 @@ document.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => showPi
 $('pkClose').onclick = hidePicker;
 $('recBtn').onclick = () => CMD.record(!S.recording);
 $('btnAF').onclick = () => CMD.af();
-$('btnIris').onclick = () => CMD.autoIris();
-$('btnAWB').onclick = () => CMD.autoWb();
+$('btnRecAll').onclick = () => recAll();
+$('fedit').onclick = () => openMenu('fkeys');
 $('btnPresets').onclick = () => showPicker('presets');
 $('btnMenu').onclick = () => openMenu();
 $('menuClose').onclick = closeMenu;
