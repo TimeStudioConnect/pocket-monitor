@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.25-d\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-f\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -176,12 +176,20 @@
 
   #toast{position:fixed;left:50%;top:calc(64px + var(--st));transform:translateX(-50%);background:#222;border:1px solid #444;padding:10px 16px;border-radius:8px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;text-align:center}
   #toast.show{opacity:1}
-  #pair{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:60;display:none;align-items:center;justify-content:center;padding:calc(20px + var(--st)) 20px calc(20px + var(--sb))}
-  #pair.open{display:flex}
-  #pair .box{background:#161616;border:1px solid #333;border-radius:12px;max-width:520px;padding:22px 24px;line-height:1.5}
-  #pair h2{margin:0 0 8px;font-size:18px;color:var(--acc)}
-  #pair ol{padding-left:20px;color:#ccc;font-size:14px}
-  #pair li{margin:6px 0}
+  .camcards{display:flex;flex-direction:column;gap:8px}
+  .camcard{border:1px solid #2c2c2c;border-radius:10px;padding:10px 12px;background:#151515}
+  .camcard.ph-pairing,.camcard.ph-lost{border-color:var(--warn)}
+  .camcard.ph-ok{border-color:#2e5b38}
+  .cc-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .cc-h b{font-size:16px} .cc-h small{color:var(--dim);font-size:12px}
+  .cc-s{margin-left:auto;font-size:13px;color:var(--dim)}
+  .ph-pairing .cc-s,.ph-lost .cc-s,.ph-retry .cc-s,.ph-queued .cc-s,.ph-connecting .cc-s{color:var(--warn)} .ph-ok .cc-s{color:var(--ok)}
+  .cc-h .d{display:inline-block;width:9px;height:9px;border-radius:50%;background:#555}
+  .ph-ok .cc-h .d{background:var(--ok)} .ph-pairing .cc-h .d,.ph-lost .cc-h .d,.ph-retry .cc-h .d,.ph-queued .cc-h .d,.ph-connecting .cc-h .d{background:var(--warn)}
+  .camcard ol{margin:8px 0 0;padding-left:22px;color:#ddd;font-size:15px;line-height:1.55}
+  .camcard .row{margin-top:10px;flex-wrap:wrap}
+  .camcard .note{margin-top:6px}
+  #btnConnect small{display:block;font-size:9px;color:var(--warn);letter-spacing:0;margin-top:2px}
   .big{padding:10px 16px;border-radius:8px;border:1px solid #444;background:#1e1e1e;font-size:14px}
   .big.primary{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
   .big.danger{border-color:#7a2a2a;color:#ff8a80}
@@ -260,22 +268,6 @@
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <div id="toast"></div>
 <div id="perf"></div>
-<div id="pair">
-  <div class="box">
-    <h2>Appairage Bluetooth</h2>
-    <p id="pairMsg"></p>
-    <ol>
-      <li>La caméra affiche un <b>code à 6 chiffres</b>.</li>
-      <li>Saisissez-le dans la fenêtre du système&nbsp;: sur Mac « Demande de jumelage Bluetooth » (souvent une <b>notification en haut à droite</b> — cliquez dessus) ; sur Windows/Android, la fenêtre de Chrome ou du système.</li>
-      <li>Puis cliquez sur <b>Continuer</b>. Ne relancez pas la connexion entre-temps : chaque nouvelle tentative change le code.</li>
-    </ol>
-    <p class="note" id="pairErr"></p>
-    <div class="row" style="justify-content:flex-end">
-      <button class="big" id="pairCancel">Annuler</button>
-      <button class="big primary" id="pairGo">Continuer</button>
-    </div>
-  </div>
-</div>
 
 <script>
 /* Tout le code est isolé dans une fonction : aucun nom global ne peut entrer en conflit
@@ -285,7 +277,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.25-d';
+const APP_VERSION = '2025.11.26-f';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -514,106 +506,115 @@ function applyCommand({cat, param, values: v}) {
    TRANSPORT BLE — avec reconnexion automatique
    ===================================================================== */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-/* Une caméra en Bluetooth direct (Chrome / Edge / Bluefy). Tout l'état passe par withCam(id). */
+/* ============ BLUETOOTH DIRECT (Chrome / Edge / Bluefy sur iPad) ============
+   BleHub gère les caméras et n'en connecte / appaire qu'UNE à la fois (file d'attente) :
+   plusieurs demandes de code simultanées rendent l'appairage confus.
+   Chaque caméra a une « phase », affichée dans le panneau Caméras :
+     queued → connecting → pairing (code à saisir) → ok
+     lost (coupée pendant l'appairage) · retry (reconnexion auto) · off            */
+const PHASE_LINK = {queued:'connecting', connecting:'connecting', pairing:'pairing', lost:'pairing', ok:'ok', retry:'retry', off:'off'};
+const PAIR_TIMEOUT = 120000;   // temps laissé pour saisir le code
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
 class BleCamera {
-  constructor(device, id) { this.device = device; this.id = id; this.q = Promise.resolve(); this.want = false; this.retrying = false; }
+  constructor(device, id, hub) { this.device = device; this.id = id; this.hub = hub; this.q = Promise.resolve(); this.want = false; this.phase = 'off'; this.attempt = 0; this.hint = ''; }
   static async pick() {
     if (!navigator.bluetooth) throw new Error(window.isSecureContext === false
-      ? 'Bluetooth bloqué : la page doit être ouverte en https (ou sur localhost).'
-      : 'Web Bluetooth indisponible : utilisez Chrome, Edge ou Bluefy (iPad).');
+      ? 'Bluetooth bloqué : la page doit être ouverte en https.'
+      : 'Bluetooth indisponible : utilisez Bluefy (iPad), Chrome ou Edge.');
     return navigator.bluetooth.requestDevice({filters:[{services:[UUID.service]}], optionalServices:['device_information']});
   }
   ctx(fn) { return withCam(this.id, fn); }
-  link(l) { this.ctx(() => S.link = l); render(); }
   log(m) { log(`[${camLabel(this.id)}] ${m}`); }
+  setPhase(ph, hint = '') {
+    this.phase = ph; this.hint = hint;
+    this.ctx(() => S.link = PHASE_LINK[ph] || 'off');
+    render();
+    if (ph === 'pairing' || ph === 'lost') openCamPanel(false);   // attire l'attention sans bloquer
+  }
+  /** Connexion complète (toujours appelée via la file du hub). */
   async connect() {
     this.want = true;
     if (!this.bound) { this.device.addEventListener('gattserverdisconnected', () => this.onDrop()); this.bound = true; }
     this.ctx(() => S.name = this.device.name || 'Pocket 4K');
     try { await this.setup(); }
     catch (e) {
-      this.log('Échec de connexion : ' + (e.message || e));
-      if (!this.everOk) { this.pairingLost(e); return; }
-      if (!this.device.gatt.connected) this.onDrop(); else throw e;
+      this.log('Échec : ' + (e.message || e));
+      if (!this.want) return;
+      if (!this.everOk) this.setPhase('lost', e.message || String(e));
+      else this.setPhase('off', e.message || String(e));
     }
   }
-  /* Appairage : chaque nouvelle tentative de connexion fait afficher un NOUVEAU code par la caméra,
-     donc on ne relance jamais automatiquement pendant cette phase : on attend l'utilisateur. */
+  /** Relance (bouton) : repasse par la file. */
+  retry() { this.want = true; this.setPhase('queued'); return this.hub.run(() => this.connect()); }
+  codeEntered() { if (this._resolve) { this._resolve(); this._resolve = null; } }
   async withPairing(op, label) {
-    for (let i = 0; i < 40 && this.want; i++) {
-      try { const r = await op(); pairUI.hide(this); this.log(`${label} ✓`); return r; }
+    const end = Date.now() + PAIR_TIMEOUT;
+    for (;;) {
+      if (!this.want) throw new Error('annulé');
+      try { return await op(); }
       catch (e) {
-        this.log(`Accès chiffré refusé (${e.name}: ${e.message}) — appairage en attente`);
         if (!this.device.gatt.connected) throw e;
-        this.link('pairing');
-        pairUI.show('waiting', e.message, this);
-        await Promise.race([sleep(6000), pairUI.waitContinue()]);
+        if (Date.now() > end) throw new Error('Code non saisi à temps');
+        this.log(`${label} : en attente du code (${e.message})`);
+        if (this.phase !== 'pairing') this.setPhase('pairing', e.message);
+        await Promise.race([sleep(5000), new Promise(r => this._resolve = r)]);
       }
     }
-    throw new Error('Appairage non abouti');
-  }
-  pairingLost(e) { this.link('pairing'); pairUI.show('lost', e?.message, this); }
-  async retryPairing() {
-    this.want = true;
-    pairUI.show('waiting', '', this);
-    try { await this.setup(); }
-    catch (e) { this.log('Échec : ' + (e.message || e)); this.pairingLost(e); }
   }
   async setup() {
-    this.link('connecting');
-    this.log(`Connexion à « ${this.device.name} »…`);
-    this.server = await this.device.gatt.connect();
-    const svc = await this.server.getPrimaryService(UUID.service);
-    this.out = await svc.getCharacteristic(UUID.outgoing);
-    const inc = await svc.getCharacteristic(UUID.incoming);
-    if (!this.incBound) {
-      inc.addEventListener('characteristicvaluechanged', e => this.ctx(() => parsePackets(e.target.value).forEach(applyCommand)));
-      this.incBound = true;
-    }
+    this.inSetup = true;
     try {
-      const pv = await (await svc.getCharacteristic(UUID.protocol)).readValue();   // non chiffré
-      const v = new TextDecoder().decode(pv).replace(/\0+$/,'') || [...new Uint8Array(pv.buffer)].join('.');
-      this.ctx(() => S.protocol = v);
-    } catch (e) {}
-    // D'après le manuel : écrire « Camera Power On » (0x01) sur Camera Status (chiffré) déclenche
-    // l'appairage → la caméra affiche un code à 6 chiffres dans Setup → Bluetooth.
-    this.status = await svc.getCharacteristic(UUID.status);
-    this.log('Vérification de l\'appairage (code PIN dans Setup → Bluetooth de la caméra si demandé)…');
-    await this.withPairing(() => this.status.writeValueWithResponse
-      ? this.status.writeValueWithResponse(Uint8Array.of(0x01)) : this.status.writeValue(Uint8Array.of(0x01)), 'appairage');
-    await this.withPairing(() => inc.startNotifications(), 'réception des réglages');
-    try {
-      const tc = await svc.getCharacteristic(UUID.timecode);
-      if (!this.tcBound) { tc.addEventListener('characteristicvaluechanged', e => this.ctx(() => onTimecode(e.target.value))); this.tcBound = true; }
-      await tc.startNotifications();
-    } catch (e) { this.log('Timecode indisponible : ' + e.message); }
-    try {
-      if (!this.stBound) { this.status.addEventListener('characteristicvaluechanged', e => logStatus(e.target.value.getUint8(0))); this.stBound = true; }
-      await this.status.startNotifications();
-    } catch (e) {}
-    try { const dn = await svc.getCharacteristic(UUID.devName); await dn.writeValue(new TextEncoder().encode('Pocket Monitor')); } catch (e) {}
-    this.everOk = true;
-    pairUI.hide(this);
-    this.link('ok');
-    this.log('Connectée ✓');
+      this.setPhase('connecting');
+      this.server = await this.device.gatt.connect();
+      const svc = await this.server.getPrimaryService(UUID.service);
+      this.out = await svc.getCharacteristic(UUID.outgoing);
+      const inc = await svc.getCharacteristic(UUID.incoming);
+      if (!this.incBound) {
+        inc.addEventListener('characteristicvaluechanged', e => this.ctx(() => parsePackets(e.target.value).forEach(applyCommand)));
+        this.incBound = true;
+      }
+      try {
+        const pv = await (await svc.getCharacteristic(UUID.protocol)).readValue();   // non chiffré
+        const v = new TextDecoder().decode(pv).replace(/\0+$/,'') || [...new Uint8Array(pv.buffer)].join('.');
+        this.ctx(() => S.protocol = v);
+      } catch (e) {}
+      // Manuel : écrire « Camera Power On » (0x01) sur Camera Status (chiffré) déclenche l'appairage.
+      this.status = await svc.getCharacteristic(UUID.status);
+      await this.withPairing(() => this.status.writeValueWithResponse
+        ? this.status.writeValueWithResponse(Uint8Array.of(0x01)) : this.status.writeValue(Uint8Array.of(0x01)), 'appairage');
+      await this.withPairing(() => inc.startNotifications(), 'réglages');
+      try {
+        const tc = await svc.getCharacteristic(UUID.timecode);
+        if (!this.tcBound) { tc.addEventListener('characteristicvaluechanged', e => this.ctx(() => onTimecode(e.target.value))); this.tcBound = true; }
+        await tc.startNotifications();
+      } catch (e) {}
+      try {
+        if (!this.stBound) { this.status.addEventListener('characteristicvaluechanged', e => logStatus(e.target.value.getUint8(0))); this.stBound = true; }
+        await this.status.startNotifications();
+      } catch (e) {}
+      try { const dn = await svc.getCharacteristic(UUID.devName); await dn.writeValue(new TextEncoder().encode('Pocket Monitor')); } catch (e) {}
+      this.everOk = true; this.attempt = 0;
+      this.setPhase('ok');
+      this.log('Connectée ✓');
+    } finally { this.inSetup = false; }
   }
   async onDrop() {
+    if (this.inSetup) { this.codeEntered(); return; }   // pendant setup : réveille l'attente du code, connect() gère l'erreur
     if (!this.want || this.retrying) return;
     this.log('Lien Bluetooth perdu');
-    if (!this.everOk) { this.pairingLost(); return; }   // pas de relance auto avant le 1er appairage réussi
-    if (!P.autoReconnect) { this.link('off'); return; }
+    if (!this.everOk) { this.setPhase('lost', 'La caméra a coupé la connexion'); return; }
+    if (!P.autoReconnect) { this.setPhase('off'); return; }
     this.retrying = true;
-    for (let n = 0; n < 10 && this.want; n++) {
-      this.link('retry');
-      const wait = Math.min(2000 * 2 ** n, 15000);
-      this.log(`Reconnexion dans ${wait/1000}s (essai ${n+1}/10)`);
-      await sleep(wait);
+    for (let n = 1; n <= 10 && this.want; n++) {
+      this.attempt = n; this.setPhase('retry');
+      await sleep(Math.min(2000 * 2 ** (n - 1), 15000));
       if (!this.want) break;
-      try { await this.setup(); this.retrying = false; toast(`${camLabel(this.id)} reconnectée`); return; }
+      try { await this.hub.run(() => this.setup()); this.retrying = false; toast(`${camLabel(this.id)} reconnectée`); return; }
       catch (e) { this.log('  échec : ' + (e.message || e)); }
     }
     this.retrying = false;
-    if (this.want) this.link('off');
+    if (this.want) this.setPhase('off', 'Reconnexion abandonnée après 10 essais');
   }
   send(buf) {
     if (P.verbose) this.log('→ ' + [...buf].map(b => b.toString(16).padStart(2,'0')).join(' '));
@@ -624,28 +625,56 @@ class BleCamera {
     return this.q;
   }
   async power(on) { try { await this.status?.writeValue(Uint8Array.of(on ? 1 : 0)); } catch (e) { this.log(e.message); } }
-  disconnect() { this.want = false; if (this.device?.gatt?.connected) this.device.gatt.disconnect(); this.link('off'); }
+  disconnect() {
+    this.want = false; this.codeEntered();
+    if (this.device?.gatt?.connected) this.device.gatt.disconnect();
+    this.setPhase('off');
+  }
 }
 
-/* Plusieurs caméras en Bluetooth direct (une connexion par caméra). */
 class BleHub {
-  constructor() { this.cams = new Map(); }
-  async add(device) {
+  constructor() { this.cams = new Map(); this.lock = Promise.resolve(); }
+  /** File d'attente : une seule connexion / un seul appairage à la fois. */
+  run(task) { const p = this.lock.then(task); this.lock = p.catch(() => {}); return p; }
+  idFor(device) {
     const map = P.bleIds || {};
     let id = map[device.id];
-    if (id == null || (this.cams.has(id) && this.cams.get(id).device.id !== device.id)) {
+    if (id == null) {
       id = 1; while (this.cams.has(id) || Object.values(map).includes(id)) id++;
       P.bleIds = Object.assign({}, map, {[device.id]: id}); saveP();
     }
-    let c = this.cams.get(id);
-    if (!c) { c = new BleCamera(device, id); this.cams.set(id, c); }
-    camState(id); setActive(id, false); render();
-    await c.connect();
+    return id;
   }
+  add(device) {
+    const id = this.idFor(device);
+    let c = this.cams.get(id);
+    if (!c) { c = new BleCamera(device, id, this); this.cams.set(id, c); }
+    camState(id);
+    if (!CAMS.has(ACTIVE) || ACTIVE == null) setActive(id, false);
+    if (c.phase === 'ok') { toast(`${camLabel(id)} est déjà connectée`); return Promise.resolve(); }
+    if (c.phase === 'queued' || c.phase === 'connecting' || c.phase === 'pairing') return Promise.resolve();
+    return c.retry();
+  }
+  forget(id) {
+    const c = this.cams.get(id); if (!c) return;
+    c.disconnect();
+    try { c.device.forget?.(); } catch (e) {}
+    this.cams.delete(id); CAMS.delete(id);
+    const m = Object.assign({}, P.bleIds); Object.keys(m).forEach(k => { if (m[k] === id) delete m[k]; }); P.bleIds = m; saveP();
+    if (ACTIVE === id) { ACTIVE = null; const f = [...CAMS.keys()][0]; if (f != null) setActive(f, false); else S = newState(); }
+    render();
+  }
+  async reconnectKnown() {
+    if (!navigator.bluetooth?.getDevices) return toast('Reconnexion automatique non disponible ici : utilisez « Ajouter une caméra »');
+    const devs = await navigator.bluetooth.getDevices();
+    if (!devs.length) return toast('Aucune caméra mémorisée sur cet appareil');
+    devs.forEach(d => this.add(d).catch(() => {}));   // la file les traite une par une
+  }
+  attention() { return [...this.cams.values()].filter(c => c.phase === 'pairing' || c.phase === 'lost').length; }
   send(buf, id) { this.cams.get(id)?.send(buf); }
   cmd(c, x = {}) {
     const b = this.cams.get(x.cam ?? ACTIVE);
-    if (c === 'pair' || c === 'connect') b?.retryPairing();
+    if (c === 'pair' || c === 'connect') b?.retry();
     else if (c === 'disconnect') b?.disconnect();
     else if (c === 'power') b?.power(false);
     else if (c === 'poweron') b?.power(true);
@@ -654,26 +683,58 @@ class BleHub {
   powerOff() { targets().forEach(id => this.cams.get(id)?.power(false)); }
   disconnect() { this.cams.forEach(c => c.disconnect()); }
 }
-const pairUI = {
-  resolve: null, mode: null, cam: null,
-  show(mode, err, camObj) {
-    this.mode = mode; this.cam = camObj || this.cam;
-    const lbl = this.cam ? camLabel(this.cam.id) : 'la caméra';
-    $id('pairMsg').textContent = mode === 'lost'
-      ? `${lbl} a fermé la connexion pendant l'appairage (fréquent juste après la saisie du code). Si vous avez saisi le code, touchez Réessayer.`
-      : `${lbl} : en attente de l'appairage. Le code à 6 chiffres s'affiche dans Setup → Bluetooth de la caméra.`;
-    $id('pairGo').textContent = mode === 'lost' ? 'Réessayer' : 'Continuer';
-    $id('pairErr').textContent = err ? 'Détail : ' + err : '';
-    $id('pair').classList.add('open');
-  },
-  hide(camObj) { if (camObj && this.cam && camObj !== this.cam) return; this.mode = null; $id('pair').classList.remove('open'); },
-  waitContinue() { return new Promise(r => this.resolve = r); },
-};
-$id('pairGo').onclick = () => {
-  if (pairUI.mode === 'lost') pairUI.cam?.retryPairing?.();
-  else { pairUI.resolve?.(); pairUI.resolve = null; }
-};
-$id('pairCancel').onclick = () => { const c = pairUI.cam; pairUI.hide(); c?.disconnect?.(); };
+function ensureHub() { if (!(cam instanceof BleHub)) { cam?.disconnect?.(); cam = new BleHub(); } return cam; }
+
+/* ---------- panneau « Caméras » : un seul endroit pour connecter et appairer ---------- */
+function openCamPanel(user = true) {
+  if ($('menu').classList.contains('open')) { if (!user) { toast('Une caméra attend son code : ouvrez le panneau BLE'); return; } closeMenu(); }
+  if (openPicker === 'cams') return;
+  openPicker = 'cams'; buildPicker('cams'); $('picker').classList.add('open');
+}
+function buildCamPanel(body) {
+  const hub = cam instanceof BleHub ? cam : null;
+  if (!navigator.bluetooth) body.append(note(window.isSecureContext === false
+    ? 'Bluetooth bloqué : ouvrez la page en https (adresse GitHub).'
+    : 'Ce navigateur ne gère pas le Bluetooth : sur iPad, utilisez Bluefy.'));
+  const list = document.createElement('div'); list.className = 'camcards';
+  const cams = hub ? [...hub.cams.values()].sort((a, b) => a.id - b.id) : [];
+  cams.forEach(c => list.append(camCard(c, hub)));
+  if (!cams.length) list.append(note('Aucune caméra. Touchez « Ajouter une caméra » puis choisissez-la dans la liste.'));
+  body.append(list);
+  body.append(rowButtons([
+    ['＋ Ajouter une caméra', () => connect(false), 'primary'],
+    ...(navigator.bluetooth?.getDevices ? [['Reconnecter les caméras connues', () => ensureHub().reconnectKnown()]] : []),
+  ]));
+  body.append(note('Les caméras sont connectées une par une : la suivante attend que la précédente soit prête. Pour le premier appairage, ouvrez sur la caméra Setup → Bluetooth : le code à 6 chiffres s\'y affiche.'));
+}
+function camCard(c, hub) {
+  const lbl = camLabel(c.id);
+  const d = document.createElement('div'); d.className = 'camcard ph-' + c.phase;
+  const st = {queued:'En attente de son tour…', connecting:'Connexion…', pairing:'Code à saisir', lost:'Appairage interrompu',
+              ok:'Connectée ✓', retry:`Signal perdu — reconnexion (essai ${c.attempt}/10)`, off:'Déconnectée'}[c.phase] || c.phase;
+  d.innerHTML = `<div class="cc-h"><i class="d"></i><b>${esc(lbl)}</b><small>${esc(c.device.name || '')}</small><span class="cc-s">${esc(st)}</span></div>`;
+  if (c.phase === 'pairing') {
+    const ol = document.createElement('ol');
+    ol.innerHTML = `<li>Sur <b>${esc(lbl)}</b> : <b>Setup → Bluetooth</b>, le code à 6 chiffres s'affiche.</li>
+      <li>${isIOS() ? 'Tapez-le dans la fenêtre <b>« Demande de jumelage Bluetooth »</b> d\'iOS.' : 'Tapez-le dans la fenêtre de jumelage du système.'}</li>
+      <li>Touchez <b>J'ai saisi le code</b>.</li>`;
+    d.append(ol);
+    d.append(note('C\'est normal même si la caméra a déjà été appairée avec un autre appareil : chaque appareil s\'appaire une fois.'));
+  }
+  if (c.phase === 'lost') d.append(note('La caméra a fermé la connexion pendant l\'appairage (souvent juste après la saisie du code). Touchez « Relancer » : si le code a été accepté, elle se connectera directement.'));
+  if (c.hint && (c.phase === 'lost' || c.phase === 'off')) d.append(note('Détail : ' + c.hint));
+  const B = {
+    pairing:    [["J'ai saisi le code", () => c.codeEntered(), 'primary'], ['Annuler', () => c.disconnect()]],
+    lost:       [['Relancer l\'appairage', () => c.retry(), 'primary'], ['Oublier', () => hub.forget(c.id), 'danger']],
+    off:        [['Reconnecter', () => c.retry(), 'primary'], ['Oublier', () => hub.forget(c.id), 'danger']],
+    ok:         [['Afficher', () => { setActive(c.id); hidePicker(); }], ['Déconnecter', () => c.disconnect()]],
+    retry:      [['Arrêter', () => c.disconnect()]],
+    queued:     [['Annuler', () => c.disconnect()]],
+    connecting: [['Annuler', () => c.disconnect()]],
+  }[c.phase] || [];
+  if (B.length) d.append(rowButtons(B));
+  return d;
+}
 function logStatus(f) {
   const names = [[1,'allumée'],[2,'connectée'],[4,'appairée'],[8,'versions OK'],[16,'données initiales reçues'],[32,'prête']];
   log(`Statut caméra 0x${f.toString(16)} : ${names.filter(([b]) => f & b).map(([,n]) => n).join(', ') || 'aucun'}`);
@@ -818,20 +879,17 @@ async function connect(demo=false, device=null) {
       cam = new DemoHub(3); await cam.connect();
       toast('Mode démo : 3 caméras simulées'); return;
     }
-    const dev = device || await BleCamera.pick();
-    if (!(cam instanceof BleHub)) { cam?.disconnect?.(); cam = new BleHub(); }
-    await cam.add(dev);
-    if (connected()) toast(`${camLabel(ACTIVE)} connectée`);
+    const dev = device || await BleCamera.pick();      // fenêtre de choix (doit suivre un toucher)
+    const hub = ensureHub();
+    openCamPanel(false);
+    await hub.add(dev);
   } catch (e) {
-    if (e.name !== 'NotFoundError') { toast(e.message || String(e)); log('Erreur : ' + (e.message || e)); }
-    if (!connected() && S.link !== 'retry') { cam = null; setLink('off'); }
+    if (e.name !== 'NotFoundError') { toast(e.message || String(e)); log('Erreur : ' + (e.message || e)); }   // NotFoundError = choix annulé
+    if (!(cam instanceof BleHub) && !connected() && S.link !== 'retry') { cam = null; setLink('off'); }
   }
 }
 async function quickReconnect() {
-  if (!navigator.bluetooth?.getDevices) return toast('Reconnexion rapide non prise en charge par ce navigateur');
-  const devs = await navigator.bluetooth.getDevices();
-  if (!devs.length) return toast('Aucune caméra mémorisée : utilisez « Ajouter une caméra »');
-  for (const d of devs) await connect(false, d);
+  return ensureHub().reconnectKnown();
 }
 function send(buf) {
   if (!cam) { toast('Pas de caméra connectée — appuyez sur BLE'); return false; }
@@ -1144,7 +1202,11 @@ function doRender() {
   const lt = {off:'Déconnecté', connecting:'Connexion…', retry:'Reconnexion…', pairing:'Appairage…', ok: S.demo ? 'Démo' : 'Connecté'}[S.link];
   $('conn').textContent = lt;
   $('conn').className = S.link==='ok' ? 'ok' : S.link==='off' ? '' : 'retry';
-  $('btnConnect').classList.toggle('on', S.link==='ok');
+  if (cam instanceof BleHub) {
+    const n = cam.attention();
+    setHTML($('btnConnect'), n ? `BLE<small>${n} à appairer</small>` : 'BLE');
+    $('btnConnect').classList.toggle('on', okIds().length > 0);
+  } else { setHTML($('btnConnect'), 'BLE'); $('btnConnect').classList.toggle('on', S.link==='ok'); }
   renderTc(); renderDash(); renderFkeys(); renderStrip();
   const menuOpen = $('menu').classList.contains('open');
   if (openPicker || menuOpen) {
@@ -1201,7 +1263,7 @@ function renderStrip() {
   setHTML(el, chips + `<span class="sp"></span>
     <button class="chipbtn${P.linked ? ' on' : ''}" data-x="link" title="Les réglages s'appliquent à toutes les caméras du groupe 🔗">🔗 Lier : ${P.linked ? nLinked + ' cam.' : 'off'}</button>
     <button class="chipbtn" data-x="all">Tout lier</button>
-    ${cam instanceof BleHub ? '<button class="chipbtn" data-x="add">＋ Caméra</button>' : ''}
+    ${cam instanceof BleHub ? `<button class="chipbtn${cam.attention() ? ' on' : ''}" data-x="add">Caméras${cam.attention() ? ' • ' + cam.attention() + ' à appairer' : ''}</button>` : ''}
     <button class="chipbtn recall${okIds().some(id => CAMS.get(id).state.recording) ? ' on' : ''}" data-x="rec">● REC toutes</button>`);
 }
 $id('camstrip').addEventListener('click', e => {
@@ -1211,7 +1273,7 @@ $id('camstrip').addEventListener('click', e => {
   if (x === 'link') return toggleP('linked');
   if (x === 'all') { P.group = [...CAMS.keys()]; P.linked = true; saveP(); render(); return toast('Toutes les caméras sont liées'); }
   if (x === 'rec') return recAll();
-  if (x === 'add') return connect(false);
+  if (x === 'add') return openCamPanel();
   const chip = e.target.closest('.chip');
   if (chip) setActive(+chip.dataset.id);
 });
@@ -1283,7 +1345,7 @@ function buildPicker(kind, refresh=false) {
   const sc = body.querySelector('.opts')?.scrollLeft;
   body.innerHTML = '';
   const titles = {iso:'ISO', shutter:'Obturateur', iris:'Diaphragme', wb:'Balance des blancs', focus:'Mise au point',
-    fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
+    cams:'Caméras Bluetooth', fps:'Cadence d\'enregistrement', codec:'Codec & qualité', dr:'Plage dynamique', lut:'LUT d\'affichage', presets:'Presets'};
   if (kind.startsWith('assign:')) {
     const i = +kind.slice(7);
     $('pkTitle').textContent = `Assigner F${i+1}`;
@@ -1322,6 +1384,7 @@ function buildPicker(kind, refresh=false) {
       body.append(opts([0,1,2], v => v===S.dynRange, v => DR[v], v => CMD.dynRange(v))); break;
     case 'lut':
       body.append(opts([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))); break;
+    case 'cams': buildCamPanel(body); break;
     case 'presets':
       if (!P.presets.length) body.append(note('Aucun preset. Enregistrez l\'état actuel de la caméra pour créer le premier.'));
       else {
@@ -1449,7 +1512,7 @@ function buildPane(tab, refresh=false) {
       onclick: () => { okIds().forEach(id => withCam(id, () => withTargets([id], () => CMD.str(12,5,camLabel(id))))); toast('ID caméra écrits'); }})));
     h('Noms des caméras');
     [...CAMS.keys()].sort((a, b) => a - b).forEach(id => textItem(`Caméra #${id}`, camLabel(id), v => renameCam(id, v)));
-    if (RELAY || cam instanceof BleHub) p.append(rowButtons([[RELAY ? 'Rechercher d\'autres caméras' : '+ Ajouter une caméra', () => RELAY ? cam.cmd('scan') : connect(false)],
+    if (RELAY || cam instanceof BleHub) p.append(rowButtons([[RELAY ? 'Rechercher d\'autres caméras' : 'Gérer les caméras Bluetooth', () => RELAY ? cam.cmd('scan') : openCamPanel()],
       ...[...CAMS.values()].filter(c => c.state.link === 'pairing' || c.state.link === 'retry').map(c => [`Appairer ${c.label}`, () => cam.cmd('pair', {cam: c.id})])]));
     p.append(note('Le Mac gère plusieurs caméras Bluetooth à la fois. Au-delà de 4 à 6 caméras, la liaison peut ralentir selon le Mac. Chaque caméra demande son propre code PIN au premier appairage.'));
   }
@@ -1717,10 +1780,9 @@ function buildPane(tab, refresh=false) {
     const actions = document.createElement('div'); actions.className = 'seg';
     const mk = (l, fn, cls='') => { const b = document.createElement('button'); b.textContent = l; b.onclick = fn; if (cls) b.className = cls; actions.append(b); };
     if (RELAY) { mk('Rechercher la caméra', () => cam.cmd('scan'), 'sel'); mk('Appairer', () => cam.cmd('pair', {cam: ACTIVE})); mk('Reconnecter', () => cam.cmd('connect', {cam: ACTIVE})); mk('Déconnecter', () => cam.cmd('disconnect', {cam: ACTIVE})); }
-    else if (cam instanceof BleHub) { mk('+ Ajouter une caméra', () => connect(false), 'sel'); mk('Reconnexion rapide', quickReconnect);
-      if (ACTIVE != null) { mk(`Appairer ${camLabel(ACTIVE)}`, () => cam.cmd('pair')); mk(`Déconnecter ${camLabel(ACTIVE)}`, () => cam.cmd('disconnect')); } }
+    else if (cam instanceof BleHub) mk('Gérer les caméras Bluetooth', () => openCamPanel(), 'sel');
     else if (S.link !== 'off') mk('Déconnecter', () => { cam?.disconnect(); onDisconnected(); });
-    else { mk('Connecter (Bluetooth)', () => connect(false), 'sel'); mk('Reconnexion rapide', quickReconnect); mk('Mode démo', () => connect(true)); }
+    else { mk('Caméras Bluetooth', () => openCamPanel(), 'sel'); mk('Mode démo', () => connect(true)); }
     p.append(item(`État : ${$('conn').textContent}${S.link==='ok' ? ' — ' + S.name : ''}`, actions));
     p.append(item('Reconnexion automatique', onoff(P.autoReconnect, v => { P.autoReconnect = v; saveP(); render(); })));
     p.append(item('Version de la page', span(APP_VERSION)));
@@ -1784,10 +1846,8 @@ $('btnConnect').onclick = () => {
     else { cam.cmd(S.link === 'off' ? 'scan' : 'connect'); toast('Demande envoyée au Mac'); }
     return;
   }
-  if (cam instanceof BleHub) return connect(false);            // ajoute une caméra
-  if (S.link !== 'off') { if (confirm('Déconnecter la caméra ?')) { cam?.disconnect(); onDisconnected(); } }
-  else if (!navigator.bluetooth) toast(window.isSecureContext === false ? 'Bluetooth bloqué : ouvrez la page en https' : 'Bluetooth indisponible dans ce navigateur (Bluefy sur iPad, Chrome/Edge ailleurs)');
-  else connect(false);
+  if (cam instanceof DemoHub) { if (confirm('Quitter le mode démo ?')) { cam.disconnect(); onDisconnected(); } return; }
+  openPicker === 'cams' ? hidePicker() : openCamPanel();     // panneau Caméras
 };
 $('btnConnect').oncontextmenu = e => { e.preventDefault(); if (S.link === 'off') connect(true); };
 document.querySelectorAll('#tabs [data-tab]').forEach(b => b.onclick = () => openMenu(b.dataset.tab));
