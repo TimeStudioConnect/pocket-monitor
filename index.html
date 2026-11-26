@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-h\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-i\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -303,7 +303,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-h';
+const APP_VERSION = '2025.11.26-i';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -460,6 +460,7 @@ function applyCommand({cat, param, values: v}) {
   PERF.pk++;
   const k = cat + '.' + param;
   if (P.verbose) log(`← ${k} = ${v.map(x => Math.round(x*1000)/1000).join(', ')}`);
+  (S.seen = S.seen || {})[k] = {v, t: Date.now()};   // diagnostic : ce que la caméra envoie réellement
   const A = S.audio, C = S.cc;
   switch (k) {
     case '0.0':  S.focus = v[0]; break;
@@ -1097,9 +1098,17 @@ function toggleP(k){ P[k] = !P[k]; saveP(); render(); }
 /* LUT d'affichage : on garde la dernière LUT choisie (sinon « film → vidéo ») et on bascule tout de suite à l'écran. */
 function toggleLut() {
   const l = S.lut > 0 ? S.lut : (P.lastLut || 2);
+  const was = S.lutOn, sent = Date.now(), st = S;
   S.lut = l; S.lutOn = !S.lutOn;
-  CMD.lut(l, S.lutOn); render();
-  toast(S.lutOn ? `LUT : ${LUTS[l]}` : 'LUT désactivée');
+  if (!CMD.lut(l, S.lutOn)) { S.lutOn = was; return; }
+  render();
+  toast(S.lutOn ? `LUT : ${LUTS[l]}…` : 'LUT : désactivation…');
+  setTimeout(() => {   // la caméra renvoie normalement la nouvelle valeur : sinon, elle a ignoré la commande
+    if ((st.seen?.['1.15']?.t || 0) >= sent) return;
+    st.lutOn = was; render();
+    toast('La caméra n\'a pas confirmé : elle ne semble pas accepter le changement de LUT d\'affichage en Bluetooth', 6000);
+    log('LUT d\'affichage (1.15) : aucune confirmation de la caméra — commande probablement non prise en charge');
+  }, 1500);
 }
 /* Repères / grille de la caméra (3.3) : [style de cadre, opacité %, zone de sécurité %, grille (bits)] */
 const ov = () => S.overlay || [0, 100, 0, 0];
@@ -1850,6 +1859,24 @@ function buildPane(tab, refresh=false) {
     p.append(item('Compteur de performance', onoff(P.perf, v => { P.perf = v; saveP(); })));
     p.append(item('Journal détaillé (paquets)', onoff(P.verbose, v => { P.verbose = v; saveP(); render(); })));
     if (S.link === 'ok') p.append(item('Alimentation', Object.assign(document.createElement('button'), {className:'big danger', textContent:'Éteindre la caméra', onclick: () => confirm('Éteindre la caméra ?') && cam.powerOff()})));
+    h(`Réglages envoyés par ${CAMS.size ? camLabel(ACTIVE) : 'la caméra'}`);
+    const NAMES = {'0.0':'Focus','0.2':'Iris','0.6':'Stabilisation','0.8':'Zoom','1.0':'Mode vidéo','1.2':'Balance des blancs','1.7':'Plage dynamique',
+      '1.8':'Netteté','1.9':'Format d\'enregistrement','1.10':'Exposition auto','1.11':'Angle d\'obturateur','1.12':'Vitesse d\'obturateur',
+      '1.13':'Gain (dB)','1.14':'ISO','1.15':'LUT d\'affichage','1.16':'Filtre ND','2.0':'Niveau micro','2.1':'Casque','2.3':'Haut-parleur',
+      '2.4':'Entrée audio','2.5':'Niveaux d\'entrée','2.6':'Alim. fantôme','3.0':'Affichage état / repères','3.3':'Repères et grille',
+      '4.0':'Luminosité écran','4.1':'Outils (zebra, peaking, false color)','4.2':'Niveau zebra','4.3':'Niveau peaking','4.4':'Mire',
+      '4.5':'Focus assist','4.7':'Source du timecode','5.0':'Tally','5.1':'Tally avant','5.2':'Tally arrière','7.1':'Langue','7.2':'Fuseau horaire',
+      '8.0':'Lift','8.1':'Gamma','8.2':'Gain couleur','8.3':'Offset','8.4':'Contraste','8.5':'Luma mix','8.6':'Teinte / saturation',
+      '10.0':'Codec','10.1':'Transport / supports'};
+    const seen = S.seen || {};
+    const keys = Object.keys(seen).sort((a, b) => { const [x1, y1] = a.split('.').map(Number), [x2, y2] = b.split('.').map(Number); return x1 - x2 || y1 - y2; });
+    if (!keys.length) p.append(note('Aucun réglage reçu pour l\'instant.'));
+    else {
+      const d = document.createElement('div'); d.id = 'log'; d.style.height = 'auto'; d.style.maxHeight = '220px';
+      d.textContent = keys.map(k => `${k.padEnd(6)} ${(NAMES[k] || '').padEnd(28)} ${seen[k].v.map(x => typeof x === 'number' ? Math.round(x * 1000) / 1000 : x).join(', ')}`).join('\n');
+      p.append(d);
+      p.append(note(seen['1.15'] ? 'La caméra envoie sa LUT d\'affichage (1.15).' : 'La caméra n\'a jamais envoyé de LUT d\'affichage (1.15) : elle ne gère probablement pas cette commande en Bluetooth.'));
+    }
     h('Journal');
     const lg = document.createElement('div'); lg.id = 'log'; lg.textContent = LOG.join('\n'); p.append(lg);
     p.append(rowButtons([['Copier le journal', () => navigator.clipboard.writeText(LOG.join('\n')).then(() => toast('Journal copié'))], ['Effacer', () => { LOG.length = 0; render(); }]]));
@@ -1890,7 +1917,7 @@ function closeMenu(){ $('menu').classList.remove('open'); }
    ÉVÉNEMENTS
    ===================================================================== */
 let toastT;
-function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3500); }
+function toast(msg, ms = 3500){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 
 document.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => showPicker(el.dataset.pick));
 $('pkClose').onclick = hidePicker;
