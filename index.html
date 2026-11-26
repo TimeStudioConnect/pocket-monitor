@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-l\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-n\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -234,7 +234,7 @@
   .tile .sub{font-size:12px;color:#777;min-height:14px}
   .tile.small{min-height:74px;padding:12px 16px} .tile.small .val{font-size:20px}
   .tile.on{border-color:rgba(255,176,0,.5)} .tile.on .val{color:var(--acc)}
-  .tile.unk{opacity:.45} .tile.unk .sub{color:var(--warn)}
+  .tile.unk .sub{color:#8a7a55}
   .warnbox{border:1px solid #5a4313;background:#1d170a;color:#e8c27a;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5;margin:0 0 12px}
   #picker{left:var(--sl);right:calc(104px + var(--sr))}
   @media (max-width:900px){ #dash{grid-template-columns:repeat(2,minmax(0,1fr))} #tcbox{font-size:18px} .hbtn{padding:9px 10px} }
@@ -305,7 +305,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-l';
+const APP_VERSION = '2025.11.26-n';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -460,10 +460,10 @@ function log(msg) {
 
 function applyCommand({cat, param, op, values: v}) {
   PERF.pk++;
-  if (op === 1) return;   // un décalage n'est pas une valeur absolue
   const k = cat + '.' + param;
   if (P.verbose) log(`← ${k} = ${v.map(x => Math.round(x*1000)/1000).join(', ')}`);
-  (S.seen = S.seen || {})[k] = {v, t: Date.now()};   // diagnostic : ce que la caméra envoie réellement
+  const prev = (S.seen = S.seen || {})[k];
+  S.seen[k] = {v, t: Date.now(), op, n: (prev?.n || 0) + 1};   // diagnostic : ce que la caméra envoie réellement
   const A = S.audio, C = S.cc;
   switch (k) {
     case '0.0':  S.focus = v[0]; break;
@@ -508,7 +508,7 @@ function applyCommand({cat, param, op, values: v}) {
     case '12.14': S.slate.slateMode = v[0]; break;
     case '10.1': S.transportMode = v[0]; S.playSpeed = v[1] ?? 0; S.recording = v[0] === 2; S.transportFlags = v[2] ?? 0; S.media = [v[3] ?? null, v[4] ?? null]; break;
     case '0.6':  S.ois = !!v[0]; break;
-    case '9.0':  if (v.length >= 2 && v[1] >= 0 && v[1] <= 100) S.battery = {mv: v[0], pct: v[1]}; break;   // non documenté : interprétation probable
+    case '9.0':  if (v.length >= 2 && v[1] >= 0 && v[1] <= 100) S.battery = {mv: v[0], pct: v[1]}; break;   // non documenté dans le manuel, vérifié sur Pocket 4K : [millivolts, %, état]
     case '3.3':  S.overlay = v.slice(0,4); break;
     case '4.5':  S.focusMethod = v[0]; S.focusColor = v[1]; break;
     case '4.7':  S.tcSource = v[0]; break;
@@ -1026,7 +1026,7 @@ const PARAM_NAMES = {'0.0':'Focus','0.2':'Iris','0.6':'Stabilisation','0.8':'Zoo
       '12.3':'Prise','12.4':'Bonne prise','12.14':'Slate pour (enreg. / lecture)',
       '0.1':'Autofocus (déclencheur)','10.5':'Non documenté','12.2':'Scène','12.5':'ID caméra','12.6':'Opérateur','12.7':'Réalisateur',
       '12.8':'Projet','12.9':'Objectif','12.10':'Ouverture (texte)','12.11':'Focale (texte)','12.12':'Distance (texte)','12.13':'Filtre (texte)',
-      '12.15':'Cible du slate','9.0':'Batterie ? (non documenté : mV, %, état)','9.1':'Non documenté (catégorie 9)','9.2':'Non documenté (catégorie 9)',
+      '12.15':'Cible du slate','9.0':'Batterie (mV, %, état — non documenté)','9.1':'Non documenté (catégorie 9)','9.2':'Non documenté (catégorie 9)',
       '9.5':'Non documenté (catégorie 9)','9.6':'Non documenté (catégorie 9)','9.7':'Non documenté (catégorie 9)','9.8':'Non documenté (catégorie 9)','255.255':'(message vide)'};
 
 /* Sonde : le protocole n'a pas de commande « lire ». On envoie pour chaque paramètre un DÉCALAGE DE 0
@@ -1077,7 +1077,7 @@ function probeReport() {
     return list.length ? `${title} (${list.length})\n` + list.map(r => `  ${r.k.padEnd(6)} ${(PARAM_NAMES[r.k] || '?').padEnd(34)} ${r.v}`).join('\n') + '\n' : '';
   };
   return `Pocket Monitor ${APP_VERSION} — sondage de ${R.label} (${R.name}, protocole ${R.protocol ?? '?'}) — ${R.when}\n\n` +
-    sec('RÉPOND À LA REQUÊTE', 'ok') + '\n' + sec('ENVOYÉ À LA CONNEXION SEULEMENT', 'init') + '\n' + sec('PAS DE RÉPONSE', 'none');
+    sec('RÉPOND À LA REQUÊTE', 'ok') + '\n' + sec('ENVOYÉ À LA CONNEXION SEULEMENT', 'init') + '\n' + sec('NE RENVOIE PAS SA VALEUR (peut quand même accepter la commande)', 'none');
 }
 const toggleTool = bit => { S.tools = (S.tools||0) ^ bit; CMD.tools(S.tools); render(); };
 
@@ -1420,13 +1420,13 @@ $id('camstrip').addEventListener('click', e => {
   if (chip) setActive(+chip.dataset.id);
 });
 
-/** La caméra a-t-elle déjà envoyé ce réglage ? (connexion ou sondage). Sinon il est sans doute sans effet. */
+/** La caméra a-t-elle déjà envoyé ce réglage ? Sinon elle ne renvoie pas son état (la commande peut quand même fonctionner, ex. zebra). */
 const confirmed = k => S.link !== 'ok' || !!(S.seen && S.seen[k]);
 const confirmedGroup = prefix => S.link !== 'ok' || Object.keys(S.seen || {}).some(k => k.startsWith(prefix));
 function warnUnconfirmed(p, prefix, what) {
   if (confirmedGroup(prefix)) return;
   const d = document.createElement('div'); d.className = 'warnbox';
-  d.textContent = `⚠ ${what} : ${camLabel(ACTIVE)} n’a jamais envoyé ces réglages (ni à la connexion, ni au sondage). Ils sont très probablement sans effet sur cette caméra.`;
+  d.textContent = `ℹ ${what} : ${camLabel(ACTIVE)} ne renvoie pas l’état de ces réglages. Les commandes peuvent fonctionner (le zebra fonctionne sur Pocket 4K), mais l’affichage ici ne reflète pas forcément la caméra : vérifiez sur son écran.`;
   p.append(d);
 }
 function renderDash() {
@@ -1448,10 +1448,10 @@ function renderDash() {
     lutSupported() ? T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn)
                    : T('ae', 'Expo auto', S.autoExp == null ? '--' : AE_NAMES[S.autoExp], '', !!S.autoExp),
     sec('Assistance'),
-    T('focus', 'Focus', fmt.pct(S.focus), confirmed('0.0') ? '' : 'non confirmé', false, 'small' + unk('0.0')),
-    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', !confirmed('4.1') ? 'non confirmé' : S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small' + unk('4.1')),
-    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', confirmed('4.1') ? '' : 'non confirmé', !!(S.tools & 2), 'small' + unk('4.1')),
-    T('', 'False color', S.tools & 4 ? 'On' : 'Off', confirmed('4.1') ? '' : 'non confirmé', !!(S.tools & 4), 'small' + unk('4.1')),
+    T('focus', 'Focus', fmt.pct(S.focus), confirmed('0.0') ? '' : 'état non renvoyé', false, 'small' + unk('0.0')),
+    T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', !confirmed('4.1') ? 'état non renvoyé' : S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small' + unk('4.1')),
+    T('', 'Peaking', S.tools & 2 ? 'On' : 'Off', confirmed('4.1') ? '' : 'état non renvoyé', !!(S.tools & 2), 'small' + unk('4.1')),
+    T('', 'False color', S.tools & 4 ? 'On' : 'Off', confirmed('4.1') ? '' : 'état non renvoyé', !!(S.tools & 4), 'small' + unk('4.1')),
   ].join(''));
 }
 $id('dash').addEventListener('click', e => {
@@ -1549,7 +1549,7 @@ function buildPicker(kind, refresh=false) {
       if (!R) { body.append(note('Aucun sondage pour l\'instant.')); break; }
       $('pkTitle').textContent = `Sondage — ${R.label} — ${R.when}`;
       const cnt = st => R.rows.filter(r => r.status === st).length;
-      body.append(note(`${cnt('ok')} réglages répondent · ${cnt('init')} envoyés seulement à la connexion · ${cnt('none')} sans réponse (probablement non gérés)`));
+      body.append(note(`${cnt('ok')} réglages répondent · ${cnt('init')} envoyés seulement à la connexion · ${cnt('none')} ne renvoient pas leur valeur`));
       const ta = document.createElement('textarea');
       ta.readOnly = true; ta.value = probeReport();
       ta.style.cssText = 'width:100%;height:46vh;background:#0a0a0a;color:#ccc;border:1px solid #2a2a2a;border-radius:8px;font:12px/1.45 ui-monospace,Menlo,monospace;padding:10px;margin-top:8px';
@@ -1558,7 +1558,7 @@ function buildPicker(kind, refresh=false) {
         ['Copier le rapport', () => { ta.select(); (navigator.clipboard?.writeText(ta.value) || Promise.reject()).then(() => toast('Rapport copié'), () => { document.execCommand?.('copy'); toast('Rapport sélectionné : utilisez Copier'); }); }, 'primary'],
         ['Relancer', () => probeCamera(R.id)],
       ]));
-      body.append(note('« Pas de réponse » veut dire que la caméra n\'a pas renvoyé la valeur : le plus souvent, elle ne gère pas ce réglage. Le sondage ne modifie aucun réglage (décalage de 0).'));
+      body.append(note('« Ne renvoie pas sa valeur » ne veut pas dire « non géré » : la caméra peut accepter la commande sans renvoyer son état (c\'est le cas du zebra sur Pocket 4K). Testez sur la caméra. Le sondage ne modifie aucun réglage (décalage de 0).'));
       break;
     }
     case 'ae':
@@ -1641,6 +1641,7 @@ function buildPane(tab, refresh=false) {
         ['Balance', () => S.wbK == null ? null : `${S.wbK}K ${S.tint ? (S.tint > 0 ? '+' : '') + S.tint : ''}`.trim()],
         ['Codec', () => fmt.codec()], ['Cadence', () => fmt.fps()], ['Format', () => fmt.res()],
         ['Plage', () => S.dynRange == null ? null : DR[S.dynRange]], ['LUT', () => S.lutOn ? LUTS[S.lut] : 'Off'],
+        ['Batterie', () => S.battery ? `${S.battery.pct} % · ${(S.battery.mv / 1000).toFixed(1)} V` : null],
       ];
       const ref = withCam(ACTIVE, () => cols.map(([, f]) => String(f() ?? '--')));
       const g = groupIds();
@@ -1995,7 +1996,8 @@ function buildPane(tab, refresh=false) {
     if (!keys.length) p.append(note('Aucun réglage reçu pour l\'instant.'));
     else {
       const d = document.createElement('div'); d.id = 'log'; d.style.height = 'auto'; d.style.maxHeight = '220px';
-      d.textContent = keys.map(k => `${k.padEnd(6)} ${(NAMES[k] || '').padEnd(28)} ${seen[k].v.map(x => typeof x === 'number' ? Math.round(x * 1000) / 1000 : x).join(', ')}`).join('\n');
+      const ago = t => { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`; };
+      d.textContent = keys.map(k => `${k.padEnd(6)} ${(NAMES[k] || '').padEnd(30)} ${seen[k].v.map(x => typeof x === 'number' ? Math.round(x * 1000) / 1000 : x).join(', ').padEnd(22)} ×${seen[k].n || 1}${seen[k].op ? ' op' + seen[k].op : ''} · il y a ${ago(seen[k].t)}`).join('\n');
       p.append(d);
       p.append(note(seen['1.15'] ? 'La caméra envoie sa LUT d\'affichage (1.15).' : 'La caméra n\'a jamais envoyé de LUT d\'affichage (1.15) : elle ne gère probablement pas cette commande en Bluetooth.'));
     }
