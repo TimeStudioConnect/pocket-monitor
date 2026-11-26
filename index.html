@@ -21,7 +21,7 @@
       b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));white-space:pre-wrap';
       b.onclick = function () { b.parentNode.removeChild(b); };
       (document.body || document.documentElement).appendChild(b);
-      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-n\n' + navigator.userAgent + '\n';
+      b.textContent = 'Erreur dans la page (touchez pour fermer) — version 2025.11.26-o\n' + navigator.userAgent + '\n';
     }
     b.textContent += '\n• ' + msg;
   }
@@ -305,7 +305,7 @@
 /* =====================================================================
    PROTOCOLE BLACKMAGIC CAMERA CONTROL (BLE)
    ===================================================================== */
-const APP_VERSION = '2025.11.26-n';
+const APP_VERSION = '2025.11.26-o';
 window.__pmReady = true;   // le script principal a démarré
 const UUID = {
   service:  '291d567a-6d75-11e6-8b77-86f30ca893d3',
@@ -1173,11 +1173,15 @@ const ACTIONS = {
 let FEDIT = false;   // mode édition des touches de fonction
 function toggleP(k){ P[k] = !P[k]; saveP(); render(); }
 /** La caméra a-t-elle déjà envoyé sa LUT d'affichage (1.15) ? Sinon (ex. Pocket 4K, LUT 3D) elle n'est pas pilotable. */
-const lutSupported = () => !!(S.seen && S.seen['1.15']);
+const lutSupported = () => true;   // la Pocket 4K n'envoie la LUT qu'à la demande : on essaie toujours, la confirmation tranche
 const AE_NAMES = ['Manuelle','Iris auto','Shutter auto','Iris + shutter','Shutter + iris'];
 /* LUT d'affichage : on garde la dernière LUT choisie (sinon « film → vidéo ») et on bascule tout de suite à l'écran. */
+/** Choisit une LUT (0 = aucune) et vérifie que la caméra confirme. */
+function setLut(v) {
+  if (v === 0) { if (S.lutOn) toggleLut(); return; }
+  S.lut = v; S.lutOn = false; toggleLut();
+}
 function toggleLut() {
-  if (!lutSupported()) { toast('LUT non pilotable en Bluetooth sur cette caméra : activez-la sur la caméra (ou via un de ses boutons F)', 5000); return; }
   const l = S.lut > 0 ? S.lut : (P.lastLut || 2);
   const was = S.lutOn, sent = Date.now(), st = S;
   S.lut = l; S.lutOn = !S.lutOn;
@@ -1445,8 +1449,7 @@ function renderDash() {
     T('fps', 'Cadence', fmt.fps(), S.rfFlags & 4 ? `Capteur ${S.sensorFps} i/s` : 'i/s'),
     T('codec', 'Codec', fmt.codec(), fmt.res()),
     T('dr', 'Plage dyn.', S.dynRange == null ? '--' : DR[S.dynRange]),
-    lutSupported() ? T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), '', S.lutOn)
-                   : T('ae', 'Expo auto', S.autoExp == null ? '--' : AE_NAMES[S.autoExp], '', !!S.autoExp),
+    T('lut', 'LUT', S.lut == null ? '--' : (S.lutOn ? LUTS[S.lut] : 'Off'), S.lut == null ? 'toucher pour régler' : '', !!S.lutOn),
     sec('Assistance'),
     T('focus', 'Focus', fmt.pct(S.focus), confirmed('0.0') ? '' : 'état non renvoyé', false, 'small' + unk('0.0')),
     T('', 'Zebra', S.tools & 1 ? 'On' : 'Off', !confirmed('4.1') ? 'état non renvoyé' : S.zebraLevel != null ? Math.round(S.zebraLevel * 100) + '%' : '', !!(S.tools & 1), 'small' + unk('4.1')),
@@ -1564,7 +1567,9 @@ function buildPicker(kind, refresh=false) {
     case 'ae':
       body.append(opts([0,1,2,3,4], v => v===S.autoExp, v => AE_NAMES[v], v => CMD.autoExp(v))); break;
     case 'lut':
-      body.append(opts([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => CMD.lut(v, v!==0))); break;
+      if (!refresh) send(packet(1,15,T.I8,new Uint8Array(2),1));   // la caméra renvoie sa LUT actuelle
+      body.append(opts([0,1,2,3], v => S.lutOn ? v===S.lut : v===0, v => LUTS[v], v => setLut(v)));
+      body.append(note('Sur Pocket 4K, la LUT 3D active (ex. Gen 5 Film to Extended Video) apparaît comme l\'un de ces 4 choix. Si la caméra ne confirme pas, la page revient en arrière et vous prévient.')); break;
     case 'cams': buildCamPanel(body); break;
     case 'presets':
       if (!P.presets.length) body.append(note('Aucun preset. Enregistrez l\'état actuel de la caméra pour créer le premier.'));
